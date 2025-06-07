@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
+import { ToastContainer, toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 import HashTable from '@components/HashTable'
 import { HashFunctionSelector } from '@components/HashFunctionSelector'
 import { CollisionResolutionSelector } from '@components/CollisionResolutionSelector'
@@ -29,13 +31,7 @@ export default function Visualizer() {
   const [selectedHashFunction, setSelectedHashFunction] = useState(hashFunctions[0])
   const [selectedCollisionResolution, setSelectedCollisionResolution] = useState(collisionResolutions[0])
   const [tableSize, setTableSize] = useState(10)
-  const [tableState, setTableState] = useState(() => {
-    if (collisionResolutions[0].id === 'chaining') {
-      return Array(10).fill(null).map(() => [])
-    } else {
-      return Array(10).fill(null)
-    }
-  })
+  const [keys, setKeys] = useState([])
   const [isAnimating, setIsAnimating] = useState(false)
   const [analytics, setAnalytics] = useState({
     collisions: 0,
@@ -46,15 +42,7 @@ export default function Visualizer() {
   const [activeIndex, setActiveIndex] = useState(null)
   const [activeKey, setActiveKey] = useState(null)
   const [operation, setOperation] = useState(null)
-
-  // Effect to re-initialize tableState when tableSize or collisionResolution changes
-  useEffect(() => {
-    if (selectedCollisionResolution.id === 'chaining') {
-      setTableState(Array(tableSize).fill(null).map(() => []))
-    } else {
-      setTableState(Array(tableSize).fill(null))
-    }
-  }, [tableSize, selectedCollisionResolution])
+  const [activeTab, setActiveTab] = useState('visualizer')
 
   const handleTableSizeChange = (newSize) => {
     if (newSize < 1) newSize = 1
@@ -114,232 +102,160 @@ export default function Visualizer() {
     if (isAnimating) return
     setIsAnimating(true)
     
+    // Calculate initial hash
     const hashFn = getHashFunction()
     const initialHash = hashFn(key, tableSize)
-    let currentProbes = 0
-    let finalIndex = -1
-    let newTableState = [...tableState]
+    let finalHash = initialHash
+    let probes = 0
+    let inserted = false; // Flag to track if insertion was successful
 
+    // Handle collisions based on resolution method
     if (selectedCollisionResolution.id === 'chaining') {
-      newTableState[initialHash].push(key)
-      finalIndex = initialHash
+      // For chaining, we just add the key to the list
+      finalHash = initialHash;
+      inserted = true; // Always inserted in chaining
     } else {
-      // Probing methods
-      let indexToProbe = initialHash
-
-      // Comprehensive check to see if the key already exists anywhere in the table for probing methods
-      let keyExistsInTable = false
-      for (let i = 0; i < tableSize; i++) {
-        if (tableState[i] === key) {
-          keyExistsInTable = true
-          break
-        }
+      // Probing methods: check for table full before attempting insertion
+      if (keys.length >= tableSize) {
+        toast.error('Table is full! Cannot insert more keys.', { position: 'top-center' });
+        setIsAnimating(false);
+        return;
       }
 
-      if (keyExistsInTable) {
-        console.warn(`Key ${key} already exists in the table. Not inserting duplicate.`) 
-        setIsAnimating(false)
-        return // Do not insert duplicate keys
-      }
+      let originalInitialHash = initialHash; // Keep original initial hash for probing
+      let currentProbeIndex = initialHash; // Start probing from initial hash
 
-      while (currentProbes < tableSize) {
-        // If the slot is empty, insert the key
-        if (newTableState[indexToProbe] === null) {
-          finalIndex = indexToProbe
-          newTableState[finalIndex] = key
-          console.log(`Probing insert: Key ${key} inserted at finalIndex ${finalIndex} after ${currentProbes} probes.`)
-          break
+      for (let i = 0; i < tableSize; i++) { // Iterate up to tableSize times for probing
+        if (!keys.some(k => hashFn(k, tableSize) === currentProbeIndex)) { // Check if the slot is empty
+          finalHash = currentProbeIndex;
+          inserted = true;
+          probes = i; // Number of probes
+          break;
         }
 
-        // If the slot is occupied by a different key, probe for the next slot
-        currentProbes++
+        probes++;
         if (selectedCollisionResolution.id === 'linear') {
-          indexToProbe = (initialHash + currentProbes) % tableSize
+          currentProbeIndex = (originalInitialHash + probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          indexToProbe = (initialHash + currentProbes * currentProbes) % tableSize
+          currentProbeIndex = (originalInitialHash + probes * probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHash = 7 - (initialHash % 7) // Secondary hash function
-          indexToProbe = (initialHash + currentProbes * secondaryHash) % tableSize
-        }
-        console.log(`Probing: Initial hash ${initialHash}, current probe count ${currentProbes}, next index to probe ${indexToProbe}`)
-
-        // If we've probed through all available slots and haven't found an empty one
-        if (currentProbes >= tableSize) {
-          console.warn('Table is full or could not find a spot for key:', key)
-          setIsAnimating(false)
-          return
+          const secondaryHash = 7 - (originalInitialHash % 7); // Secondary hash function
+          currentProbeIndex = (originalInitialHash + probes * secondaryHash) % tableSize;
         }
       }
 
-      if (finalIndex === -1) {
-        console.warn('Table is full or could not find a spot for key:', key)
-        setIsAnimating(false)
-        return
+      if (!inserted) {
+        toast.error('Table is full! Cannot insert more keys after probing.', { position: 'top-center' });
+        setIsAnimating(false);
+        return;
       }
     }
 
-    setTableState(newTableState)
-    console.log('Visualizer - tableState after insert:', newTableState)
-    
-    // Calculate analytics
-    let currentCollisions = 0
-    let totalProbes = 0
-    let filledSlots = 0
+    if (inserted) {
+      const newKeys = [...keys, key];
+      setKeys(newKeys);
 
-    if (selectedCollisionResolution.id === 'chaining') {
-      newTableState.forEach(chain => {
-        if (chain.length > 1) {
-          currentCollisions += (chain.length - 1)
-        }
-        filledSlots += chain.length
-      })
+      // Calculate collisions (only relevant for chaining visually)
+      const collisions = selectedCollisionResolution.id === 'chaining' ? 
+        newKeys.reduce((acc, k) => {
+          const hash = hashFn(k, tableSize);
+          const sameHash = newKeys.filter(k2 => hashFn(k2, tableSize) === hash);
+          return acc + (sameHash.length > 1 ? 1 : 0);
+        }, 0) : 0; // Collisions not typically counted this way for probing
+
+      // Update analytics
+      setAnalytics({
+        collisions,
+        probes,
+        loadFactor: newKeys.length / tableSize
+      });
+      
+      // Set active state for animation
+      setActiveIndex(finalHash);
+      setActiveKey(key);
+      setOperation('insert');
+      
+      // Reset active state after animation
+      setTimeout(() => {
+        setActiveIndex(null);
+        setActiveKey(null);
+        setOperation(null);
+        setIsAnimating(false);
+      }, 1000);
     } else {
-      newTableState.forEach((val, idx) => {
-        if (val !== null) {
-          filledSlots++
-          const initialValHash = hashFn(val, tableSize)
-          let probeCount = 0
-          let currentValHash = initialValHash
-          
-          // Find how many probes it took to place this key
-          while (probeCount < tableSize) {
-            if (currentValHash === idx) {
-              break
-            }
-            probeCount++
-            if (selectedCollisionResolution.id === 'linear') {
-              currentValHash = (initialValHash + probeCount) % tableSize
-            } else if (selectedCollisionResolution.id === 'quadratic') {
-              currentValHash = (initialValHash + probeCount * probeCount) % tableSize
-            } else if (selectedCollisionResolution.id === 'double') {
-              const secondaryHash = 7 - (initialValHash % 7)
-              currentValHash = (initialValHash + probeCount * secondaryHash) % tableSize
-            }
-          }
-          totalProbes += probeCount
-          if (probeCount > 0) currentCollisions++ // A collision occurred if probes were needed
-        }
-      })
+      setIsAnimating(false);
     }
-
-    setAnalytics({
-      collisions: currentCollisions,
-      probes: totalProbes,
-      loadFactor: filledSlots / tableSize
-    })
-    
-    // Set active state for animation
-    setActiveIndex(finalIndex)
-    setActiveKey(key)
-    setOperation('insert')
-    
-    // Reset active state after animation
-    setTimeout(() => {
-      setActiveIndex(null)
-      setActiveKey(null)
-      setOperation(null)
-      setIsAnimating(false)
-    }, 1000)
   }
 
   const handleDelete = (key) => {
     if (isAnimating) return
     setIsAnimating(true)
     const hashFn = getHashFunction()
-    let newTableState = [...tableState]
-    let deletedIndex = -1
+
+    let deleted = false;
+    let deleteIndex = null;
+    let probes = 0;
+    const initialHash = hashFn(key, tableSize);
+    let currentIndex = initialHash;
 
     if (selectedCollisionResolution.id === 'chaining') {
-      newTableState = newTableState.map((chain, index) => {
-        const foundIndex = chain.indexOf(key)
-        if (foundIndex !== -1) {
-          deletedIndex = index
-          return chain.filter(k => k !== key)
+      const newKeys = keys.filter(k => k !== key);
+      if (newKeys.length === keys.length) {
+        toast.info(`Key '${key}' not found.`, { position: 'top-center' });
+        setIsAnimating(false);
+        return;
+      }
+      setKeys(newKeys);
+      deleted = true;
+      deleteIndex = initialHash;
+    } else { // Probing methods
+      for (let i = 0; i < tableSize; i++) {
+        if (keys.some(k => hashFn(k, tableSize) === currentIndex && k === key)) {
+          // Found the key at currentIndex, now delete it
+          const newKeys = keys.filter(k => !(hashFn(k, tableSize) === currentIndex && k === key));
+          setKeys(newKeys);
+          deleted = true;
+          deleteIndex = currentIndex;
+          probes = i;
+          break;
         }
-        return chain
-      })
-    } else {
-      // Probing methods
-      let initialHash = hashFn(key, tableSize)
-      let currentProbes = 0
-      let indexToProbe = initialHash
-
-      while (currentProbes < tableSize) {
-        if (newTableState[indexToProbe] === key) {
-          deletedIndex = indexToProbe
-          newTableState[deletedIndex] = null // Mark as deleted
-          break
-        } else if (newTableState[indexToProbe] === null) {
-          // Found an empty slot, key is not in table
-          console.warn(`Key ${key} not found for deletion.`)
-          deletedIndex = -1 // Indicate not found for animation
-          break
-        }
-
-        currentProbes++
+        probes++;
         if (selectedCollisionResolution.id === 'linear') {
-          indexToProbe = (initialHash + currentProbes) % tableSize
+          currentIndex = (initialHash + probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          indexToProbe = (initialHash + currentProbes * currentProbes) % tableSize
+          currentIndex = (initialHash + probes * probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHash = 7 - (initialHash % 7)
-          indexToProbe = (initialHash + currentProbes * secondaryHash) % tableSize
+          const secondaryHash = 7 - (initialHash % 7);
+          currentIndex = (initialHash + probes * secondaryHash) % tableSize;
         }
       }
-    }
 
-    setTableState(newTableState)
+      if (!deleted) {
+        toast.info(`Key '${key}' not found.`, { position: 'top-center' });
+        setIsAnimating(false);
+        return;
+      }
+    }
     
-    // Recalculate analytics after deletion
-    let currentCollisions = 0
-    let totalProbes = 0
-    let filledSlots = 0
+    // Calculate collisions (only relevant for chaining visually)
+    const collisions = selectedCollisionResolution.id === 'chaining' ? 
+      keys.reduce((acc, k) => {
+        const hash = hashFn(k, tableSize);
+        const sameHash = keys.filter(k2 => hashFn(k2, tableSize) === hash);
+        return acc + (sameHash.length > 1 ? 1 : 0);
+      }, 0) : 0;
 
-    if (selectedCollisionResolution.id === 'chaining') {
-      newTableState.forEach(chain => {
-        if (chain.length > 1) {
-          currentCollisions += (chain.length - 1)
-        }
-        filledSlots += chain.length
-      })
-    } else {
-      newTableState.forEach((val, idx) => {
-        if (val !== null) {
-          filledSlots++
-          const initialValHash = hashFn(val, tableSize)
-          let probeCount = 0
-          let currentValHash = initialValHash
-          
-          while (probeCount < tableSize) {
-            if (currentValHash === idx) {
-              break
-            }
-            probeCount++
-            if (selectedCollisionResolution.id === 'linear') {
-              currentValHash = (initialValHash + probeCount) % tableSize
-            } else if (selectedCollisionResolution.id === 'quadratic') {
-              currentValHash = (initialValHash + probeCount * probeCount) % tableSize
-            } else if (selectedCollisionResolution.id === 'double') {
-              const secondaryHash = 7 - (initialValHash % 7)
-              currentValHash = (initialValHash + probeCount * secondaryHash) % tableSize
-            }
-          }
-          totalProbes += probeCount
-          if (probeCount > 0) currentCollisions++
-        }
-      })
-    }
-
+    // Update analytics
     setAnalytics({
-      collisions: currentCollisions,
-      probes: totalProbes,
-      loadFactor: filledSlots / tableSize
+      collisions,
+      probes,
+      loadFactor: (keys.length - (deleted ? 1 : 0)) / tableSize // Adjust load factor for deletion
     })
     
     // Set active state for animation
-    setActiveIndex(deletedIndex !== -1 ? deletedIndex : null) // Set to null if not found
-    setActiveKey(key)
-    setOperation('delete')
+    setActiveIndex(deleteIndex);
+    setActiveKey(key);
+    setOperation('delete');
     
     // Reset active state after animation
     setTimeout(() => {
@@ -355,70 +271,59 @@ export default function Visualizer() {
     setIsAnimating(true)
     
     const hashFn = getHashFunction()
-    const initialHash = hashFn(key, tableSize)
-    let foundIndex = -1
-    let currentProbes = 0
+    let found = false;
+    let searchIndex = null;
+    let probes = 0;
+
+    const initialHash = hashFn(key, tableSize);
+    let currentIndex = initialHash;
 
     if (selectedCollisionResolution.id === 'chaining') {
-      const chain = tableState[initialHash]
-      if (chain && chain.includes(key)) {
-        foundIndex = initialHash
+      const bucket = keys.filter(k => hashFn(k, tableSize) === currentIndex);
+      if (bucket.includes(key)) {
+        found = true;
+        searchIndex = currentIndex;
       }
-    } else {
-      let indexToProbe = initialHash
-      while (currentProbes < tableSize) {
-        if (tableState[indexToProbe] === key) {
-          foundIndex = indexToProbe
-          break
-        } else if (tableState[indexToProbe] === null) {
-          // Found an empty slot, key is not in table
-          break
+    } else { // Probing methods
+      for (let i = 0; i < tableSize; i++) {
+        // Check if the current slot contains the key
+        // For probing, we only consider the key that is actually in the slot.
+        const keyInSlot = keys.find(k => hashFn(k, tableSize) === currentIndex);
+        if (keyInSlot === key) {
+          found = true;
+          searchIndex = currentIndex;
+          probes = i;
+          break;
         }
 
-        currentProbes++
+        probes++;
         if (selectedCollisionResolution.id === 'linear') {
-          indexToProbe = (initialHash + currentProbes) % tableSize
+          currentIndex = (initialHash + probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          indexToProbe = (initialHash + currentProbes * currentProbes) % tableSize
+          currentIndex = (initialHash + probes * probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHash = 7 - (initialHash % 7)
-          indexToProbe = (initialHash + currentProbes * secondaryHash) % tableSize
+          const secondaryHash = 7 - (initialHash % 7); // Secondary hash function
+          currentIndex = (initialHash + probes * secondaryHash) % tableSize;
+        }
+
+        // If we've probed all possible slots and haven't found the key, stop
+        if (probes >= tableSize) {
+          break;
         }
       }
     }
 
-    // Set active state for animation
-    setActiveIndex(foundIndex !== -1 ? foundIndex : null) // Set to null if not found
+    if (found) {
+      toast.success(`Key '${key}' found at index ${searchIndex}!`, { position: 'top-center' });
+      setActiveIndex(searchIndex);
+    } else {
+      toast.error(`Key '${key}' not found.`, { position: 'top-center' });
+      setActiveIndex(null);
+    }
+
     setActiveKey(key)
     setOperation('search')
     
-    // Recalculate analytics for search (probes for search operation)
-    let searchProbes = 0
-    if (foundIndex !== -1 && selectedCollisionResolution.id !== 'chaining') { // Only count probes if key was found and it's a probing method
-      const initialSearchHash = hashFn(key, tableSize)
-      let currentSearchIndex = initialSearchHash
-      while (searchProbes < tableSize) {
-        if (tableState[currentSearchIndex] === key) {
-          // Key found
-          break
-        }
-        if (tableState[currentSearchIndex] === null) {
-          // Reached an empty slot before finding the key (implies key not present, or deleted without shifting)
-          break
-        }
-        searchProbes++
-        if (selectedCollisionResolution.id === 'linear') {
-          currentSearchIndex = (initialSearchHash + searchProbes) % tableSize
-        } else if (selectedCollisionResolution.id === 'quadratic') {
-          currentSearchIndex = (initialSearchHash + searchProbes * searchProbes) % tableSize
-        } else if (selectedCollisionResolution.id === 'double') {
-          const secondarySearchHash = 7 - (initialSearchHash % 7)
-          currentSearchIndex = (initialSearchHash + searchProbes * secondarySearchHash) % tableSize
-        }
-      }
-    }
-    setAnalytics(prev => ({ ...prev, probes: searchProbes }))
-
     // Reset active state after animation
     setTimeout(() => {
       setActiveIndex(null)
@@ -430,56 +335,86 @@ export default function Visualizer() {
 
   return (
     <div className="space-y-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-8"
-      >
-        {/* Left Panel */}
-        <div className="space-y-8">
-          <HashFunctionSelector
-            functions={hashFunctions}
-            selected={selectedHashFunction}
-            onSelect={setSelectedHashFunction}
-          />
-          {selectedHashFunction.id === 'custom' && (
-            <CustomHashEditor onChange={setCustomHashFn} />
-          )}
-          <CollisionResolutionSelector
-            methods={collisionResolutions}
-            selected={selectedCollisionResolution}
-            onSelect={setSelectedCollisionResolution}
-          />
-            <AnalyticsPanel data={analytics} />
-        </div>
-        {/* Right Panel */}
-        <div className="space-y-8">
-          <ControlPanel
-            onInsert={handleInsert}
-            onDelete={handleDelete}
-            onSearch={handleSearch}
-            isAnimating={isAnimating}
-            onTableSizeChange={handleTableSizeChange}
-            tableSize={tableSize}
-          />
-        
-          <HashTable
-            size={tableSize}
-            tableState={tableState} // Pass tableState instead of keys
-            hashFunction={getHashFunction()}
-            collisionResolution={selectedCollisionResolution.id}
-            isAnimating={isAnimating}
-            activeIndex={activeIndex}
-            activeKey={activeKey}
-            operation={operation}
-          />
+      {/* Tab Navigation */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+        <button
+          className={`py-2 px-4 text-sm font-medium ${activeTab === 'visualizer' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+          onClick={() => setActiveTab('visualizer')}
+        >
+          Visualization
+        </button>
+        <button
+          className={`py-2 px-4 text-sm font-medium ${activeTab === 'code' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+          onClick={() => setActiveTab('code')}
+        >
+          Code
+        </button>
+      </div>
+
+      {activeTab === 'visualizer' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+        >
+          {/* Left Panel */}
+          <div className="space-y-8">
+            <HashFunctionSelector
+              functions={hashFunctions}
+              selected={selectedHashFunction}
+              onSelect={setSelectedHashFunction}
+            />
+            {selectedHashFunction.id === 'custom' && (
+              <CustomHashEditor onChange={setCustomHashFn} />
+            )}
+            <CollisionResolutionSelector
+              methods={collisionResolutions}
+              selected={selectedCollisionResolution}
+              onSelect={setSelectedCollisionResolution}
+            />
+              <AnalyticsPanel data={analytics} />
+          </div>
+          {/* Right Panel */}
+          <div className="space-y-8">
+            <ControlPanel
+              onInsert={handleInsert}
+              onDelete={handleDelete}
+              onSearch={handleSearch}
+              isAnimating={isAnimating}
+              onTableSizeChange={handleTableSizeChange}
+              tableSize={tableSize}
+            />
+          
+            <HashTable
+              size={tableSize}
+              keys={keys}
+              hashFunction={getHashFunction()}
+              collisionResolution={selectedCollisionResolution.id}
+              isAnimating={isAnimating}
+              activeIndex={activeIndex}
+              activeKey={activeKey}
+              operation={operation}
+            />
+          </div>
+        </motion.div>
+      )}
+
+      {activeTab === 'code' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
           <CodeDisplay
             operation={operation}
-            key={activeKey}
+            activeKey={activeKey}
             size={tableSize}
+            hashFunction={selectedHashFunction.id}
+            collisionResolution={selectedCollisionResolution.id}
           />
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
+      
+      <ToastContainer />
     </div>
   )
 } 
