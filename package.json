@@ -2,7 +2,7 @@
   "name": "hashing-visualizer",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://akashkumar2004.github.io/hashing-visualizer",
+  "homepage": "https://Akash-S-G.github.io/hashing-visualizer",
   "type": "module",
   "scripts": {
     "dev": "vite",
