@@ -5,8 +5,8 @@ import 'react-toastify/dist/ReactToastify.css'
 import HashTable from '@components/HashTable'
 import { AnalyticsPanel } from '@components/AnalyticsPanel'
 import { ControlPanel } from '@components/ControlPanel'
-import { CodeDisplay } from '@components/CodeDisplay'
 import { CustomHashEditor } from '@components/CustomHashEditor'
+import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 
 const hashFunctions = [
   { id: 'division', name: 'Division Method', description: 'h(k) = k mod m' },
@@ -40,9 +40,9 @@ export default function Visualizer() {
   const [activeIndex, setActiveIndex] = useState(null)
   const [activeKey, setActiveKey] = useState(null)
   const [operation, setOperation] = useState(null)
-  const [activeTab, setActiveTab] = useState('visualizer')
   const [insertionSteps, setInsertionSteps] = useState([])
   const [showInsertionSteps, setShowInsertionSteps] = useState(false)
+  const [showAnalytics, setShowAnalytics] = useState(false)
 
   const handleTableSizeChange = (newSize) => {
     if (newSize < 1) newSize = 1
@@ -214,15 +214,27 @@ export default function Visualizer() {
       setKeys(newKeys)
       currentSteps.push(`Key ${key} successfully inserted at final index ${finalHash}.`)
 
-      const collisions = selectedCollisionResolution.id === 'chaining' ? 
-        newKeys.reduce((acc, k) => {
-          const hash = hashFn(k, tableSize);
-          const sameHash = newKeys.filter(k2 => hashFn(k2, tableSize) === hash);
-          return acc + (sameHash.length > 1 ? 1 : 0);
-        }, 0) : 0;
+      let calculatedCollisions = 0;
+      console.log('handleInsert: Calculating collisions for chaining. newKeys:', newKeys, 'tableSize:', tableSize);
+      if (selectedCollisionResolution.id === 'chaining') {
+        // For chaining, count the sum of (number of keys in bucket - 1) for all buckets with more than one key.
+        // This represents the number of 'extra' keys due to collisions.
+        const uniqueHashes = [...new Set(newKeys.map(k => hashFn(k, tableSize)))];
+        console.log('handleInsert: Unique hashes for newKeys:', uniqueHashes);
+        calculatedCollisions = uniqueHashes.reduce((sum, hash) => {
+            const bucketKeys = newKeys.filter(item => hashFn(item, tableSize) === hash);
+            console.log(`handleInsert: Hash ${hash} has ${bucketKeys.length} keys.`);
+            return sum + (bucketKeys.length > 1 ? (bucketKeys.length - 1) : 0);
+        }, 0);
+        console.log('handleInsert: Calculated collisions for chaining:', calculatedCollisions);
+      } else {
+        // For probing methods, 'probes' indicates the number of collisions encountered
+        calculatedCollisions = probes;
+        console.log('handleInsert: Calculated collisions for probing (probes):', calculatedCollisions);
+      }
 
       setAnalytics({
-        collisions,
+        collisions: calculatedCollisions,
         probes,
         loadFactor: newKeys.length / tableSize
       })
@@ -257,14 +269,16 @@ export default function Visualizer() {
     let probes = 0;
     const initialHash = hashFn(key, tableSize);
     let currentIndex = initialHash;
+    let newKeys = [...keys]; // Declare newKeys at the start of the function
 
     if (selectedCollisionResolution.id === 'chaining') {
-      const newKeys = keys.filter(k => k !== key);
-      if (newKeys.length === keys.length) {
+      const filteredKeys = keys.filter(k => k !== key);
+      if (filteredKeys.length === keys.length) {
         toast.info(`Key '${key}' not found.`, { autoClose: 2000 });
         setIsAnimating(false);
         return;
       }
+      newKeys = filteredKeys; // Assign to the outer newKeys
       setKeys(newKeys);
       deleted = true;
       deleteIndex = initialHash;
@@ -272,7 +286,7 @@ export default function Visualizer() {
       for (let i = 0; i < tableSize; i++) {
         if (keys.some(k => hashFn(k, tableSize) === currentIndex && k === key)) {
           // Found the key at currentIndex, now delete it
-          const newKeys = keys.filter(k => !(hashFn(k, tableSize) === currentIndex && k === key));
+          newKeys = keys.filter(k => !(hashFn(k, tableSize) === currentIndex && k === key)); // Update the outer newKeys
           setKeys(newKeys);
           deleted = true;
           deleteIndex = currentIndex;
@@ -297,17 +311,23 @@ export default function Visualizer() {
       }
     }
     
-    // Calculate collisions (only relevant for chaining visually)
-    const collisions = selectedCollisionResolution.id === 'chaining' ? 
-      keys.reduce((acc, k) => {
-        const hash = hashFn(k, tableSize);
-        const sameHash = keys.filter(k2 => hashFn(k2, tableSize) === hash);
-        return acc + (sameHash.length > 1 ? 1 : 0);
-      }, 0) : 0;
-
     // Update analytics
+    let calculatedCollisions = 0;
+    if (selectedCollisionResolution.id === 'chaining') {
+      // For chaining, count the number of buckets that have more than one key *after* deletion
+      const currentKeysAfterDeletion = newKeys; // Now newKeys is correctly defined
+      const uniqueHashes = [...new Set(currentKeysAfterDeletion.map(k => hashFn(k, tableSize)))];
+      calculatedCollisions = uniqueHashes.filter(hash => {
+          const bucketKeys = currentKeysAfterDeletion.filter(item => hashFn(item, tableSize) === hash);
+          return bucketKeys.length > 1;
+      }).length;
+    } else {
+      // For probing methods, 'probes' during deletion indicates collisions encountered
+      calculatedCollisions = probes;
+    }
+
     setAnalytics({
-      collisions,
+      collisions: calculatedCollisions,
       probes,
       loadFactor: (keys.length - (deleted ? 1 : 0)) / tableSize // Adjust load factor for deletion
     })
@@ -381,6 +401,26 @@ export default function Visualizer() {
       setActiveIndex(null);
     }
 
+    let calculatedCollisions = 0;
+    if (selectedCollisionResolution.id === 'chaining') {
+      // For chaining, count the number of buckets that have more than one key in the current state
+      const uniqueHashes = [...new Set(keys.map(k => hashFn(k, tableSize)))];
+      calculatedCollisions = uniqueHashes.filter(hash => {
+          const bucketKeys = keys.filter(item => hashFn(item, tableSize) === hash);
+          return bucketKeys.length > 1;
+      }).length;
+    } else {
+      // For probing methods, 'probes' indicates collisions encountered during search
+      calculatedCollisions = probes;
+    }
+
+    // Update analytics based on search operation
+    setAnalytics(prevAnalytics => ({
+      ...prevAnalytics,
+      probes: probes,
+      collisions: calculatedCollisions,
+    }));
+
     setActiveKey(key)
     setOperation('search')
     
@@ -394,30 +434,15 @@ export default function Visualizer() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Tab Navigation */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
-        <button
-          className={`py-2 px-4 text-sm font-medium ${activeTab === 'visualizer' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-          onClick={() => setActiveTab('visualizer')}
-        >
-          Visualization
-        </button>
-        <button
-          className={`py-2 px-4 text-sm font-medium ${activeTab === 'code' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-          onClick={() => setActiveTab('code')}
-        >
-          Code
-        </button>
-      </div>
-
-      {activeTab === 'visualizer' && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-8"
-        >
-          {/* Control Panel (now includes selectors) */}
+    <div className="min-h-screen flex flex-col bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 relative pb-20">
+      {/* Main visualization content */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col flex-1 space-y-4 p-4"
+      >
+        {/* Control Panel (now includes selectors) */}
+        <div className="w-full  mx-auto">
           <ControlPanel
             onInsert={handleInsert}
             onDelete={handleDelete}
@@ -433,71 +458,80 @@ export default function Visualizer() {
             onSelectCollisionResolution={setSelectedCollisionResolution}
             customHashEditor={<CustomHashEditor onChange={setCustomHashFn} />}
           />
+        </div>
 
-          {/* Hash Table with Toggle for Insertion Steps */}
-          <div className="card space-y-4">
-            <HashTable
-              size={tableSize}
-              keys={keys}
-              hashFunction={getHashFunction()}
-              collisionResolution={selectedCollisionResolution.id}
-              isAnimating={isAnimating}
-              activeIndex={activeIndex}
-              activeKey={activeKey}
-              operation={operation}
-            />
-            <button
-              onClick={() => setShowInsertionSteps(!showInsertionSteps)}
-              className="py-2 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
-            >
-              {showInsertionSteps ? 'Hide Insertion Steps' : 'Show Insertion Steps'}
-            </button>
+        {/* Hash Table Container - takes remaining space */}
+        <div className="flex-1 w-full h-full mx-auto card p-4 overflow-auto">
+          <HashTable
+            size={tableSize}
+            keys={keys}
+            hashFunction={getHashFunction()}
+            collisionResolution={selectedCollisionResolution.id}
+            isAnimating={isAnimating}
+            activeIndex={activeIndex}
+            activeKey={activeKey}
+            operation={operation}
+          />
+        </div>
+      </motion.div>
+      
+      {/* Fixed-position Insertion Steps Toggle Bar */}
+      <motion.button
+        onClick={() => setShowInsertionSteps(!showInsertionSteps)}
+        className="fixed bottom-4 left-4 py-3 px-6 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-lg z-50 flex items-center justify-center"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        {showInsertionSteps ? (
+          <ChevronLeftIcon className="h-5 w-5 mr-2" />
+        ) : (
+          <ChevronRightIcon className="h-5 w-5 mr-2" />
+        )}
+        {showInsertionSteps ? 'Hide Steps' : 'Show Steps'}
+      </motion.button>
+
+      {/* Fixed-position Analytics Toggle Button */}
+      <motion.button
+        onClick={() => setShowAnalytics(!showAnalytics)}
+        className="fixed bottom-4 right-4 py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg z-50"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+      </motion.button>
+
+      {/* Conditionally Rendered Insertion Steps Panel */}
+      {showInsertionSteps && (
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="fixed bottom-20 left-4 w-96 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl z-40"
+        >
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Insertion Steps</h2>
+          <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md h-64 overflow-y-auto">
+            {insertionSteps.length > 0 ? (
+              <ul className="list-disc list-inside space-y-1 text-gray-800 dark:text-gray-200">
+                {insertionSteps.map((step, index) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-500 dark:text-gray-400">No insertion steps to display yet. Insert a key to see the process!</p>
+            )}
           </div>
-
-          {/* Insertion Steps Panel - Conditionally Rendered */}
-          {showInsertionSteps && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="card space-y-2"
-            >
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Insertion Steps</h2>
-              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md h-64 overflow-y-auto">
-                {insertionSteps.length > 0 ? (
-                  <ul className="list-disc list-inside space-y-1 text-gray-800 dark:text-gray-200">
-                    {insertionSteps.map((step, index) => (
-                      <li key={index}>{step}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-gray-500 dark:text-gray-400">No insertion steps to display yet. Insert a key to see the process!</p>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Analytics Panel */}
-          <AnalyticsPanel data={analytics} />
         </motion.div>
       )}
 
-      {activeTab === 'code' && (
+      {/* Conditionally Rendered Analytics Panel */}
+      {showAnalytics && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-20 right-4 w-96 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl z-40"
         >
-          <CodeDisplay
-            operation={operation}
-            activeKey={activeKey}
-            size={tableSize}
-            hashFunction={selectedHashFunction.id}
-            collisionResolution={selectedCollisionResolution.id}
-          />
+          <AnalyticsPanel data={analytics} />
         </motion.div>
       )}
-      
       <ToastContainer position="top-right" />
     </div>
   )

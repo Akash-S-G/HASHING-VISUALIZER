@@ -5,6 +5,7 @@ import LandingPage from '@pages/LandingPage'
 import Visualizer from '@pages/Visualizer'
 import RealWorldExplorer from '@pages/RealWorldExplorer'
 import LearnHashing from '@pages/LearnHashing'
+import { CodeDisplay } from '@components/CodeDisplay'
 
 function App() {
   return (
@@ -23,6 +24,13 @@ function App() {
             <Route path="/visualizer" element={<Visualizer />} />
             <Route path="/real-world" element={<RealWorldExplorer />} />
             <Route path="/learn" element={<LearnHashing />} />
+            <Route path="/code" element={<CodeDisplay
+              operation={null}
+              activeKey={null}
+              size={10}
+              hashFunction={'division'}
+              collisionResolution={'chaining'}
+            />} />
           </Routes>
         </motion.main>
       </AnimatePresence>

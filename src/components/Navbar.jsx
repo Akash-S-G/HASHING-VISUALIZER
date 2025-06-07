@@ -8,7 +8,7 @@ const navigation = [
   { name: 'Visualizer', href: '/visualizer' },
   { name: 'Real World', href: '/real-world' },
   { name: 'Learn', href: '/learn' },
-  
+  { name: 'Code', href: '/code' },
 ]
 
 export default function Navbar() {

@@ -47,18 +47,24 @@ export function ControlPanel({
         Control Panel
       </h2>
 
-      <HashFunctionSelector
-        functions={hashFunctions}
-        selected={selectedHashFunction}
-        onSelect={onSelectHashFunction}
-      />
-      {selectedHashFunction.id === 'custom' && customHashEditor}
+      <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0">
+        <div className="flex-1">
+          <HashFunctionSelector
+            functions={hashFunctions}
+            selected={selectedHashFunction}
+            onSelect={onSelectHashFunction}
+          />
+          {selectedHashFunction.id === 'custom' && customHashEditor}
+        </div>
 
-      <CollisionResolutionSelector
-        methods={collisionResolutions}
-        selected={selectedCollisionResolution}
-        onSelect={onSelectCollisionResolution}
-      />
+        <div className="flex-1">
+          <CollisionResolutionSelector
+            methods={collisionResolutions}
+            selected={selectedCollisionResolution}
+            onSelect={onSelectCollisionResolution}
+          />
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
