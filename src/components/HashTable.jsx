@@ -1,15 +1,16 @@
 import { useEffect, useRef, useCallback } from 'react'
 import * as d3 from 'd3'
+import { CodeDisplay } from './CodeDisplay'
 
-export function HashTable({ 
-  size, 
-  keys, 
-  hashFunction, 
-  collisionResolution, 
+export default function HashTable({
+  size,
+  tableState,
+  hashFunction,
+  collisionResolution,
   isAnimating,
   activeIndex,
   activeKey,
-  operation 
+  operation
 }) {
   const svgRef = useRef(null)
   const containerRef = useRef(null)
@@ -46,7 +47,7 @@ export function HashTable({
   useEffect(() => {
     if (!svgRef.current) return
 
-    console.log('Rendering hash table with keys:', keys)
+    console.log('HashTable - Rendering with tableState:', tableState)
 
     const svg = d3.select(svgRef.current)
     const containerWidth = svgRef.current.clientWidth
@@ -59,7 +60,7 @@ export function HashTable({
     const cellHeight = 60  // Keep original cell height
     const totalWidth = cellWidth * size
     const indexHeight = 20  // Height for index display
-    const keySpacing = 20   // Spacing between keys
+    const keySpacing = 25   // Spacing between keys (increased for better visibility)
 
     // Set SVG width and height to accommodate indices and overflow
     svg.attr('width', totalWidth)
@@ -71,7 +72,7 @@ export function HashTable({
     // Create cells
     const cells = svg
       .selectAll('g.cell')
-      .data(Array.from({ length: size }, (_, i) => i))
+      .data(Array.from({ length: size }, (_, i) => i)) // Data is just the index
       .enter()
       .append('g')
       .attr('class', 'cell')
@@ -118,19 +119,24 @@ export function HashTable({
     // Add keys to cells with enhanced animations
     cells.each(function(d) {
       const cellGroup = d3.select(this)
-      
-      // Get keys for this cell
-      const cellKeys = keys.filter(k => {
-        const hash = typeof hashFunction === 'function' 
-          ? hashFunction(k, size) 
-          : k % size
-        return hash === d
-      })
+
+      let cellKeys = []
+      if (collisionResolution === 'chaining') {
+        // For chaining, the cell's data is an array of keys
+        cellKeys = tableState[d] || []
+      } else {
+        // For probing, the cell's data is a single key or null
+        // Ensure only the key actually in this specific slot is displayed
+        if (tableState[d] !== null) {
+          cellKeys = [tableState[d]]
+        }
+      }
 
       // Calculate starting position for keys
       const startY = 20  // Start from top of cell
-      const maxVisibleKeys = 2  // Maximum number of visible keys
-      const hasOverflow = cellKeys.length > maxVisibleKeys
+      // For probing methods, maxVisibleKeys is 1 as only one key resides per slot
+      const maxVisibleKeys = collisionResolution === 'chaining' ? 2 : 1
+      const hasOverflow = cellKeys.length > maxVisibleKeys && collisionResolution === 'chaining'
 
       // Add each key to the cell with animations
       cellKeys.forEach((key, index) => {
@@ -153,9 +159,26 @@ export function HashTable({
           .attr('font-weight', '600')
           .text(key)
 
+        // Add connecting line for chaining only
+        if (index > 0 && collisionResolution === 'chaining') {
+          cellGroup
+            .append('line')
+            .attr('x1', cellWidth / 2)
+            .attr('y1', startY + ((index - 1) * keySpacing) + 10)
+            .attr('x2', cellWidth / 2)
+            .attr('y2', startY + (index * keySpacing) - 10)
+            .attr('stroke', '#6b7280')
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '4')
+            .attr('opacity', 0)
+            .transition()
+            .duration(400)
+            .attr('opacity', 1)
+        }
+
         // Animate visible keys
         if (isVisible) {
-          const isActiveKey = key === activeKey
+          const isActiveKey = (key === activeKey && d === activeIndex)
           keyGroup
             .transition()
             .duration(600)
@@ -173,7 +196,7 @@ export function HashTable({
               .attr('transform', `translate(${cellWidth / 2}, ${startY + (index * keySpacing)}) scale(1.1)`)
           })
           .on('mouseout', function() {
-            const isActiveKey = key === activeKey
+            const isActiveKey = (key === activeKey && d === activeIndex)
             d3.select(this)
               .transition()
               .duration(200)
@@ -181,8 +204,8 @@ export function HashTable({
           })
       })
 
-      // Add overflow indicator and hover effect
-      if (hasOverflow) {
+      // Add overflow indicator and hover effect only for chaining
+      if (hasOverflow && collisionResolution === 'chaining') {
         const overflowCount = cellKeys.length - maxVisibleKeys
         const overflowGroup = cellGroup
           .append('g')
@@ -220,6 +243,17 @@ export function HashTable({
             .attr('font-size', '14px')
             .attr('font-weight', '600')  // Make text bold
             .text(key)
+
+          // Add connecting line for chaining in overflow
+          overflowDisplay
+            .append('line')
+            .attr('x1', cellWidth / 2)
+            .attr('y1', (index - 1) * keySpacing + 10)
+            .attr('x2', cellWidth / 2)
+            .attr('y2', index * keySpacing - 10)
+            .attr('stroke', '#6b7280')
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '4')
 
           // Add hover effects for overflow keys
           overflowKey
@@ -269,9 +303,9 @@ export function HashTable({
           })
       }
 
-      // Add collision indicator with enhanced animation
-      if (cellKeys.length > 1) {
-        // Add collision label
+      // Add collision indicator with enhanced animation (only for chaining)
+      if (cellKeys.length > 1 && collisionResolution === 'chaining') {
+        // Add collision label with bounce animation
         cellGroup
           .append('text')
           .attr('x', cellWidth / 2)
@@ -284,40 +318,85 @@ export function HashTable({
           .transition()
           .duration(400)
           .attr('opacity', 1)
+          .attr('transform', 'translate(0, -5)')
+          .transition()
+          .duration(200)
+          .attr('transform', 'translate(0, 0)')
           .text(`Collision: ${cellKeys.length} keys`)
 
+        // Create collision animation group
         const collisionGroup = cellGroup
           .append('g')
           .attr('opacity', 0)
           .attr('transform', `translate(${cellWidth - 10}, 10) scale(0)`)
 
+        // Add collision circle with glow effect
         collisionGroup
           .append('circle')
           .attr('r', 4)
           .attr('fill', '#ef4444')
           .attr('stroke', '#dc2626')
           .attr('stroke-width', 2)
+          .attr('filter', 'url(#glow)')
 
-        // Animate collision indicator with elastic effect
-        collisionGroup
-          .transition()
-          .duration(800)
-          .attr('opacity', 1)
-          .attr('transform', `translate(${cellWidth - 10}, 10) scale(1)`)
-          .ease(d3.easeElastic.amplitude(0.5).period(0.3))
+        // Add glow filter
+        svg.append('defs')
+          .append('filter')
+          .attr('id', 'glow')
+          .append('feGaussianBlur')
+          .attr('stdDeviation', '2.5')
+          .attr('result', 'coloredBlur')
 
-        // Add pulsing animation
-        const pulse = () => {
+        // Enhanced collision animation
+        const animateCollision = () => {
           collisionGroup
             .transition()
-            .duration(1000)
-            .attr('transform', `translate(${cellWidth - 10}, 10) scale(1.2)`)
-            .transition()
-            .duration(1000)
+            .duration(800)
+            .attr('opacity', 1)
             .attr('transform', `translate(${cellWidth - 10}, 10) scale(1)`)
-            .on('end', pulse)
+            .ease(d3.easeElastic.amplitude(0.5).period(0.3))
+            .on('end', () => {
+              // Start pulsing animation
+              const pulse = () => {
+                collisionGroup
+                  .transition()
+                  .duration(1000)
+                  .attr('transform', `translate(${cellWidth - 10}, 10) scale(1.2)`)
+                  .transition()
+                  .duration(1000)
+                  .attr('transform', `translate(${cellWidth - 10}, 10) scale(1)`)
+                  .on('end', pulse)
+              }
+              pulse()
+            })
         }
-        pulse()
+
+        // Start collision animation
+        animateCollision()
+
+        // Add ripple effect for each collision
+        cellKeys.forEach((_, index) => {
+          const ripple = cellGroup
+            .append('circle')
+            .attr('cx', cellWidth / 2)
+            .attr('cy', cellHeight / 2)
+            .attr('r', 0)
+            .attr('fill', 'none')
+            .attr('stroke', '#ef4444')
+            .attr('stroke-width', 1)
+            .attr('opacity', 0)
+
+          ripple
+            .transition()
+            .delay(index * 200)
+            .duration(1000)
+            .attr('r', cellWidth)
+            .attr('opacity', 0.3)
+            .transition()
+            .duration(500)
+            .attr('opacity', 0)
+            .remove()
+        })
       }
     })
 
@@ -329,7 +408,7 @@ export function HashTable({
       console.log(`Operation: ${operation} ${activeKey} at cell ${hash}`)
 
       const operationGroup = cells
-        .filter((d) => d === hash)
+        .filter((d) => d === activeIndex) // Filter by activeIndex as it's the final placement
         .append('g')
         .attr('opacity', 0)
         .attr('transform', `translate(${cellWidth / 2}, ${cellHeight - 5}) scale(0.8)`)
@@ -363,7 +442,7 @@ export function HashTable({
         behavior: 'smooth'
       })
     }
-  }, [size, keys, hashFunction, collisionResolution, activeIndex, activeKey, operation])
+  }, [size, tableState, hashFunction, collisionResolution, activeIndex, activeKey, operation])
 
   return (
     <div className="card">
@@ -386,7 +465,7 @@ export function HashTable({
       </div>
       <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
         <p>Size: {size}</p>
-        <p>Keys: {keys.length}</p>
+        <p>Keys: {tableState.flat().filter(key => key !== null).length}</p> {/* Use flat() to count keys in tableState */}
         <p>Collision Resolution: {collisionResolution}</p>
         {activeKey !== null && (
           <p className="mt-2">
@@ -394,6 +473,12 @@ export function HashTable({
           </p>
         )}
       </div>
+      
+      {/* <CodeDisplay 
+        operation={operation}
+        key={activeKey}
+        size={size}
+      /> */}
     </div>
   )
 } 
