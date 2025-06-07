@@ -12,7 +12,7 @@ const defaultCode = `// Write a function that takes a key and table size as para
   return ((key % size) + size) % size;
 }`;
 
-const CustomHashEditor = ({ onChange }) => {
+export function CustomHashEditor({ onChange }) {
   const [code, setCode] = useState(defaultCode);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -29,11 +29,13 @@ const CustomHashEditor = ({ onChange }) => {
         throw new Error('Function must be an arrow function');
       }
       
-      // eslint-disable-next-line no-eval
-      const fn = eval(newCode);
-      
-      if (typeof fn !== 'function') {
-        throw new Error('Code must evaluate to a function');
+      // Create a function from the code string
+      let fn;
+      try {
+        // eslint-disable-next-line no-new-func
+        fn = new Function('key', 'size', `return (${newCode})(key, size);`);
+      } catch (e) {
+        throw new Error('Invalid function syntax: ' + e.message);
       }
       
       // Test the function with sample values
@@ -54,7 +56,21 @@ const CustomHashEditor = ({ onChange }) => {
       
       setPreview(result);
       setError(null);
-      onChange(fn);
+      
+      // Create a safe function that can be used by the hash table
+      const safeFn = (key, size) => {
+        try {
+          const result = fn(key, size);
+          if (typeof result !== 'number' || !Number.isInteger(result)) {
+            return ((key % size) + size) % size; // Fallback to division method
+          }
+          return ((result % size) + size) % size; // Ensure result is within bounds
+        } catch (e) {
+          return ((key % size) + size) % size; // Fallback to division method
+        }
+      };
+      
+      onChange(safeFn);
     } catch (e) {
       setError(e.message);
       setPreview(null);
@@ -127,6 +143,4 @@ const CustomHashEditor = ({ onChange }) => {
       </div>
     </div>
   );
-};
-
-export default CustomHashEditor; 
+} 

@@ -6,7 +6,7 @@ import HashTable from '@components/HashTable'
 import { AnalyticsPanel } from '@components/AnalyticsPanel'
 import { ControlPanel } from '@components/ControlPanel'
 import { CodeDisplay } from '@components/CodeDisplay'
-import CustomHashEditor from '@components/CustomHashEditor'
+import { CustomHashEditor } from '@components/CustomHashEditor'
 
 const hashFunctions = [
   { id: 'division', name: 'Division Method', description: 'h(k) = k mod m' },
@@ -36,7 +36,7 @@ export default function Visualizer() {
     probes: 0,
     loadFactor: 0,
   })
-  const [customHashFn, setCustomHashFn] = useState((key, size) => key % size)
+  const [customHashFn, setCustomHashFn] = useState((key, size) => ((key % size) + size) % size)
   const [activeIndex, setActiveIndex] = useState(null)
   const [activeKey, setActiveKey] = useState(null)
   const [operation, setOperation] = useState(null)
@@ -51,51 +51,73 @@ export default function Visualizer() {
   }
 
   const getHashFunction = () => {
-    if (selectedHashFunction.id === 'custom') return customHashFn
-    switch (selectedHashFunction.id) {
-      case 'division':
-        return (key, size) => key % size
-      case 'multiplication':
-        return (key, size) => {
-          const A = 0.6180339887
-          return Math.floor(size * ((key * A) % 1))
-        }
-      case 'polynomial':
-        return (key, size) => {
-          const p = 31
-          const str = key.toString()
-          let hash = 0
-          for (let i = 0; i < str.length; i++) {
-            hash = (hash * p + str.charCodeAt(i)) % size
-          }
-          return hash
-        }
-      case 'universal':
-        return (key, size) => {
-          const a = 3, b = 7, p2 = 1000000007
-          return ((a * key + b) % p2) % size
-        }
-      case 'midSquare':
-        return (key, size) => {
-          const square = key * key
-          const str2 = square.toString()
-          const mid = Math.floor(str2.length / 2)
-          const midDigits = parseInt(str2.slice(mid - 1, mid + 1))
-          return midDigits % size
-        }
-      case 'folding':
-        return (key, size) => {
-          const str3 = key.toString()
-          let sum = 0
-          for (let i = 0; i < str3.length; i += 2) {
-            const part = parseInt(str3.slice(i, i + 2))
-            sum += part
-          }
-          return sum % size
-        }
-      default:
-        return (key, size) => key % size
+    let currentHashFn = (key, size) => ((key % size) + size) % size; // Default fallback
+
+    console.log(`getHashFunction: selectedHashFunction.id: ${selectedHashFunction.id}`);
+    console.log(`getHashFunction: typeof customHashFn: ${typeof customHashFn}`);
+
+    if (selectedHashFunction.id === 'custom') {
+      if (typeof customHashFn === 'function') {
+        currentHashFn = customHashFn;
+      } else {
+        console.warn("getHashFunction: customHashFn is not a function, falling back to division method.");
+      }
+    } else {
+      switch (selectedHashFunction.id) {
+        case 'division':
+          currentHashFn = (key, size) => key % size;
+          break;
+        case 'multiplication':
+          currentHashFn = (key, size) => {
+            const A = 0.6180339887
+            return Math.floor(size * ((key * A) % 1))
+          };
+          break;
+        case 'polynomial':
+          currentHashFn = (key, size) => {
+            const p = 31
+            const str = key.toString()
+            let hash = 0
+            for (let i = 0; i < str.length; i++) {
+              hash = (hash * p + str.charCodeAt(i)) % size
+            }
+            return hash
+          };
+          break;
+        case 'universal':
+          currentHashFn = (key, size) => {
+            const a = 3, b = 7, p2 = 1000000007
+            return ((a * key + b) % p2) % size
+          };
+          break;
+        case 'midSquare':
+          currentHashFn = (key, size) => {
+            const square = key * key
+            const str2 = square.toString()
+            const mid = Math.floor(str2.length / 2)
+            const midDigits = parseInt(str2.slice(mid - 1, mid + 1))
+            return midDigits % size
+          };
+          break;
+        case 'folding':
+          currentHashFn = (key, size) => {
+            const str3 = key.toString()
+            let sum = 0
+            for (let i = 0; i < str3.length; i += 2) {
+              const part = parseInt(str3.slice(i, i + 2))
+              sum += part
+            }
+            return sum % size
+          };
+          break;
+        default:
+          console.warn(`getHashFunction: Unknown hash function ID: ${selectedHashFunction.id}, falling back to division method.`);
+          // currentHashFn already set to default
+          break;
+      }
     }
+    console.log(`getHashFunction: Returning type: ${typeof currentHashFn}, value:`, currentHashFn);
+    return currentHashFn;
   }
 
   const handleInsert = (key) => {
@@ -103,7 +125,10 @@ export default function Visualizer() {
     setIsAnimating(true)
     setInsertionSteps([])
 
+    console.log('handleInsert: Calling getHashFunction()');
     const hashFn = getHashFunction()
+    console.log('handleInsert: hashFn received from getHashFunction():', typeof hashFn, hashFn);
+
     const hashFnName = hashFunctions.find(f => f.id === selectedHashFunction.id)?.name || selectedHashFunction.id
     const initialHash = hashFn(key, tableSize)
     let finalHash = initialHash
@@ -112,7 +137,10 @@ export default function Visualizer() {
     let currentSteps = []
 
     currentSteps.push(`Attempting to insert key: ${key}`)
-    currentSteps.push(`Using Hash Function: ${hashFnName} (h(k) = ${key} % ${tableSize})`)
+    currentSteps.push(`Using Hash Function: ${hashFnName}`)
+    if (selectedHashFunction.id !== 'custom') {
+      currentSteps.push(`Formula: ${selectedHashFunction.description}`);
+    }
     currentSteps.push(`Initial Hash Value: ${initialHash}`)
 
     if (selectedCollisionResolution.id === 'chaining') {
@@ -123,7 +151,6 @@ export default function Visualizer() {
       if (existingKeys.length > 0) {
         currentSteps.push(`Collision detected at index ${initialHash}. Separate Chaining: Adding key to the linked list.`)
         toast.info(`Collision occurred! Key '${key}' collided with existing key(s) at index ${initialHash}`, {
-          position: 'top-center',
           autoClose: 2000
         })
       } else {
@@ -132,7 +159,7 @@ export default function Visualizer() {
     } else {
       if (keys.length >= tableSize) {
         currentSteps.push(`Table is full! Cannot insert key ${key}.`)
-        toast.error('Table is full! Cannot insert more keys.', { position: 'top-center' })
+        toast.error('Table is full! Cannot insert more keys.', { autoClose: 2000 })
         setIsAnimating(false)
         setInsertionSteps(currentSteps)
         return
@@ -155,7 +182,6 @@ export default function Visualizer() {
         currentSteps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is occupied by another key.`)
         if (i === 0) {
           toast.info(`Collision occurred! Key '${key}' collided at index ${initialHash}`, {
-            position: 'top-center',
             autoClose: 2000
           })
         }
@@ -176,7 +202,7 @@ export default function Visualizer() {
 
       if (!inserted) {
         currentSteps.push(`Table is full! Cannot insert key ${key} after probing.`)
-        toast.error('Table is full! Cannot insert more keys after probing.', { position: 'top-center' })
+        toast.error('Table is full! Cannot insert more keys after probing.', { autoClose: 2000 })
         setIsAnimating(false)
         setInsertionSteps(currentSteps)
         return
@@ -213,7 +239,6 @@ export default function Visualizer() {
       }, 1000)
 
       toast.success(`Key '${key}' inserted at index ${finalHash}!`, { 
-        position: 'top-center',
         autoClose: 1500
       })
     } else {
@@ -236,7 +261,7 @@ export default function Visualizer() {
     if (selectedCollisionResolution.id === 'chaining') {
       const newKeys = keys.filter(k => k !== key);
       if (newKeys.length === keys.length) {
-        toast.info(`Key '${key}' not found.`, { position: 'top-center' });
+        toast.info(`Key '${key}' not found.`, { autoClose: 2000 });
         setIsAnimating(false);
         return;
       }
@@ -266,7 +291,7 @@ export default function Visualizer() {
       }
 
       if (!deleted) {
-        toast.info(`Key '${key}' not found.`, { position: 'top-center' });
+        toast.info(`Key '${key}' not found.`, { autoClose: 2000 });
         setIsAnimating(false);
         return;
       }
@@ -349,10 +374,10 @@ export default function Visualizer() {
     }
 
     if (found) {
-      toast.success(`Key '${key}' found at index ${searchIndex}!`, { position: 'top-center' });
+      toast.success(`Key '${key}' found at index ${searchIndex}!`, { autoClose: 1500 });
       setActiveIndex(searchIndex);
     } else {
-      toast.error(`Key '${key}' not found.`, { position: 'top-center' });
+      toast.error(`Key '${key}' not found.`, { autoClose: 2000 });
       setActiveIndex(null);
     }
 
@@ -473,7 +498,7 @@ export default function Visualizer() {
         </motion.div>
       )}
       
-      <ToastContainer />
+      <ToastContainer position="top-right" />
     </div>
   )
 } 

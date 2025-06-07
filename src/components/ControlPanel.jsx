@@ -8,7 +8,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { HashFunctionSelector } from './HashFunctionSelector'
 import { CollisionResolutionSelector } from './CollisionResolutionSelector'
-import CustomHashEditor from './CustomHashEditor'
+import { CustomHashEditor } from './CustomHashEditor'
 
 export function ControlPanel({
   onInsert,

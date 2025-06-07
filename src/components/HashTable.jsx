@@ -209,6 +209,7 @@ export default function HashTable({
       const cellGroup = d3.select(this)
 
       // Add operation indicator with enhanced animation (now positioned behind keys)
+      /*
       if (d === activeIndex && activeKey !== null) {
         const operationGroup = cellGroup
           .append('g')
@@ -236,6 +237,7 @@ export default function HashTable({
           .attr('opacity', 0)
           .attr('transform', `translate(${cellWidth / 2}, ${cellHeight / 2 - 10}) scale(0.8)`); // Fade out upwards
       }
+      */
 
       let cellKeys = []
       if (collisionResolution === 'chaining') {
