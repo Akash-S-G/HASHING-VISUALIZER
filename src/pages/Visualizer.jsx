@@ -185,6 +185,9 @@ export default function Visualizer() {
     } else {
       setIsAnimating(false);
     }
+    if (inserted) {
+      toast.success(`Key '${key}' inserted at index ${finalHash}!`, { position: 'top-center' });
+    }
   }
 
   const handleDelete = (key) => {
