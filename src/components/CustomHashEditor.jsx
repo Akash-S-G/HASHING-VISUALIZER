@@ -4,39 +4,67 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/themes/prism.css';
 
-const defaultCode = `// Write a function: (key, size) => hashIndex
+const defaultCode = `// Write a function that takes a key and table size as parameters
+// and returns a hash index between 0 and size-1
 (key, size) => {
   // Example: Division method
-  return key % size;
+  // Make sure to handle negative numbers and ensure the result is within bounds
+  return ((key % size) + size) % size;
 }`;
 
-export default function CustomHashEditor({ onChange }) {
+const CustomHashEditor = ({ onChange }) => {
   const [code, setCode] = useState(defaultCode);
   const [error, setError] = useState(null);
   const [preview, setPreview] = useState(null);
   const [sampleKey, setSampleKey] = useState(42);
   const [sampleSize, setSampleSize] = useState(10);
 
-  const handleCodeChange = (newCode) => {
+  const validateAndExecuteCode = (newCode) => {
     setCode(newCode);
     setError(null);
+    
     try {
+      // Basic syntax validation
+      if (!newCode.includes('=>')) {
+        throw new Error('Function must be an arrow function');
+      }
+      
       // eslint-disable-next-line no-eval
       const fn = eval(newCode);
-      if (typeof fn !== 'function') throw new Error('Not a function');
+      
+      if (typeof fn !== 'function') {
+        throw new Error('Code must evaluate to a function');
+      }
+      
+      // Test the function with sample values
       const result = fn(sampleKey, sampleSize);
+      
+      // Validate the result
+      if (typeof result !== 'number') {
+        throw new Error('Function must return a number');
+      }
+      
+      if (result < 0 || result >= sampleSize) {
+        throw new Error(`Result must be between 0 and ${sampleSize - 1}`);
+      }
+      
+      if (!Number.isInteger(result)) {
+        throw new Error('Result must be an integer');
+      }
+      
       setPreview(result);
       setError(null);
       onChange(fn);
     } catch (e) {
       setError(e.message);
       setPreview(null);
-      onChange(() => -1);
+      // Provide a safe fallback function
+      onChange((key, size) => ((key % size) + size) % size);
     }
   };
 
   useEffect(() => {
-    handleCodeChange(code);
+    validateAndExecuteCode(code);
     // eslint-disable-next-line
   }, [sampleKey, sampleSize]);
 
@@ -46,11 +74,11 @@ export default function CustomHashEditor({ onChange }) {
         Custom Hash Function Editor
       </h2>
       <div className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-        Write a JavaScript function of the form <code>(key, size) =&gt; hashIndex</code>.
+        Write a JavaScript arrow function that takes <code>(key, size)</code> as parameters and returns a hash index between 0 and size-1.
       </div>
       <Editor
         value={code}
-        onValueChange={handleCodeChange}
+        onValueChange={validateAndExecuteCode}
         highlight={code => Prism.highlight(code, Prism.languages.javascript, 'javascript')}
         padding={12}
         style={{
@@ -64,7 +92,9 @@ export default function CustomHashEditor({ onChange }) {
         className="mb-2 border border-gray-300 dark:border-gray-600"
       />
       {error && (
-        <div className="text-red-500 text-sm mb-2">Error: {error}</div>
+        <div className="text-red-500 text-sm mb-2">
+          <strong>Error:</strong> {error}
+        </div>
       )}
       <div className="flex items-center space-x-2 mb-2">
         <label className="text-sm">Sample key:</label>
@@ -79,10 +109,24 @@ export default function CustomHashEditor({ onChange }) {
           type="number"
           value={sampleSize}
           onChange={e => setSampleSize(Number(e.target.value))}
+          min="1"
           className="input w-20"
         />
-        <span className="ml-4 text-sm">Output: <span className="font-mono">{preview !== null ? preview : '—'}</span></span>
+        <span className="ml-4 text-sm">
+          Output: <span className="font-mono">{preview !== null ? preview : '—'}</span>
+        </span>
+      </div>
+      <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+        <p>Requirements:</p>
+        <ul className="list-disc list-inside">
+          <li>Function must be an arrow function</li>
+          <li>Must take (key, size) as parameters</li>
+          <li>Must return an integer between 0 and size-1</li>
+          <li>Should handle negative numbers</li>
+        </ul>
       </div>
     </div>
   );
-} 
+};
+
+export default CustomHashEditor; 

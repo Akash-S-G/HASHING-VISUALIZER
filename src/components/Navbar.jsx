@@ -8,6 +8,7 @@ const navigation = [
   { name: 'Visualizer', href: '/visualizer' },
   { name: 'Real World', href: '/real-world' },
   { name: 'Learn', href: '/learn' },
+  
 ]
 
 export default function Navbar() {

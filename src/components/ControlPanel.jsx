@@ -6,8 +6,25 @@ import {
   MagnifyingGlassIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline'
+import { HashFunctionSelector } from './HashFunctionSelector'
+import { CollisionResolutionSelector } from './CollisionResolutionSelector'
+import CustomHashEditor from './CustomHashEditor'
 
-export function ControlPanel({ onInsert, onDelete, onSearch, isAnimating, onTableSizeChange, tableSize }) {
+export function ControlPanel({
+  onInsert,
+  onDelete,
+  onSearch,
+  isAnimating,
+  onTableSizeChange,
+  tableSize,
+  hashFunctions,
+  selectedHashFunction,
+  onSelectHashFunction,
+  collisionResolutions,
+  selectedCollisionResolution,
+  onSelectCollisionResolution,
+  customHashEditor,
+}) {
   const [key, setKey] = useState('')
 
   const handleSubmit = (e) => {
@@ -25,10 +42,24 @@ export function ControlPanel({ onInsert, onDelete, onSearch, isAnimating, onTabl
   }
 
   return (
-    <div className="card">
+    <div className="card space-y-6">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
         Control Panel
       </h2>
+
+      <HashFunctionSelector
+        functions={hashFunctions}
+        selected={selectedHashFunction}
+        onSelect={onSelectHashFunction}
+      />
+      {selectedHashFunction.id === 'custom' && customHashEditor}
+
+      <CollisionResolutionSelector
+        methods={collisionResolutions}
+        selected={selectedCollisionResolution}
+        onSelect={onSelectCollisionResolution}
+      />
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>

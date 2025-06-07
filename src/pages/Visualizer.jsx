@@ -3,8 +3,6 @@ import { motion } from 'framer-motion'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import HashTable from '@components/HashTable'
-import { HashFunctionSelector } from '@components/HashFunctionSelector'
-import { CollisionResolutionSelector } from '@components/CollisionResolutionSelector'
 import { AnalyticsPanel } from '@components/AnalyticsPanel'
 import { ControlPanel } from '@components/ControlPanel'
 import { CodeDisplay } from '@components/CodeDisplay'
@@ -43,6 +41,8 @@ export default function Visualizer() {
   const [activeKey, setActiveKey] = useState(null)
   const [operation, setOperation] = useState(null)
   const [activeTab, setActiveTab] = useState('visualizer')
+  const [insertionSteps, setInsertionSteps] = useState([])
+  const [showInsertionSteps, setShowInsertionSteps] = useState(false)
 
   const handleTableSizeChange = (newSize) => {
     if (newSize < 1) newSize = 1
@@ -101,113 +101,125 @@ export default function Visualizer() {
   const handleInsert = (key) => {
     if (isAnimating) return
     setIsAnimating(true)
-    
-    // Calculate initial hash
+    setInsertionSteps([])
+
     const hashFn = getHashFunction()
+    const hashFnName = hashFunctions.find(f => f.id === selectedHashFunction.id)?.name || selectedHashFunction.id
     const initialHash = hashFn(key, tableSize)
     let finalHash = initialHash
     let probes = 0
-    let inserted = false; // Flag to track if insertion was successful
+    let inserted = false
+    let currentSteps = []
 
-    // Handle collisions based on resolution method
+    currentSteps.push(`Attempting to insert key: ${key}`)
+    currentSteps.push(`Using Hash Function: ${hashFnName} (h(k) = ${key} % ${tableSize})`)
+    currentSteps.push(`Initial Hash Value: ${initialHash}`)
+
     if (selectedCollisionResolution.id === 'chaining') {
-      // For chaining, we just add the key to the list
-      finalHash = initialHash;
-      inserted = true; // Always inserted in chaining
+      finalHash = initialHash
+      inserted = true
       
-      // Check if this is a new collision
-      const existingKeys = keys.filter(k => hashFn(k, tableSize) === initialHash);
+      const existingKeys = keys.filter(k => hashFn(k, tableSize) === initialHash)
       if (existingKeys.length > 0) {
+        currentSteps.push(`Collision detected at index ${initialHash}. Separate Chaining: Adding key to the linked list.`)
         toast.info(`Collision occurred! Key '${key}' collided with existing key(s) at index ${initialHash}`, {
           position: 'top-center',
           autoClose: 2000
-        });
+        })
+      } else {
+        currentSteps.push(`No collision at index ${initialHash}. Adding key to the empty bucket.`)
       }
     } else {
-      // Probing methods: check for table full before attempting insertion
       if (keys.length >= tableSize) {
-        toast.error('Table is full! Cannot insert more keys.', { position: 'top-center' });
-        setIsAnimating(false);
-        return;
+        currentSteps.push(`Table is full! Cannot insert key ${key}.`)
+        toast.error('Table is full! Cannot insert more keys.', { position: 'top-center' })
+        setIsAnimating(false)
+        setInsertionSteps(currentSteps)
+        return
       }
 
-      let originalInitialHash = initialHash; // Keep original initial hash for probing
-      let currentProbeIndex = initialHash; // Start probing from initial hash
+      let originalInitialHash = initialHash
+      let currentProbeIndex = initialHash
+      
+      for (let i = 0; i < tableSize; i++) {
+        const isOccupied = keys.some(k => hashFn(k, tableSize) === currentProbeIndex)
 
-      for (let i = 0; i < tableSize; i++) { // Iterate up to tableSize times for probing
-        if (!keys.some(k => hashFn(k, tableSize) === currentProbeIndex)) { // Check if the slot is empty
-          finalHash = currentProbeIndex;
-          inserted = true;
-          probes = i; // Number of probes
-          break;
+        if (!isOccupied) {
+          finalHash = currentProbeIndex
+          inserted = true
+          probes = i
+          currentSteps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is available. Inserting key ${key}.`)
+          break
         }
 
-        // If we hit a collision during probing, show toast
-        if (i === 0) { // Only show for first collision
+        currentSteps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is occupied by another key.`)
+        if (i === 0) {
           toast.info(`Collision occurred! Key '${key}' collided at index ${initialHash}`, {
             position: 'top-center',
             autoClose: 2000
-          });
+          })
         }
 
-        probes++;
+        probes++
         if (selectedCollisionResolution.id === 'linear') {
-          currentProbeIndex = (originalInitialHash + probes) % tableSize;
+          currentProbeIndex = (originalInitialHash + probes) % tableSize
+          currentSteps.push(`Linear Probing: Next probe index is (${originalInitialHash} + ${probes}) % ${tableSize} = ${currentProbeIndex}`)
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          currentProbeIndex = (originalInitialHash + probes * probes) % tableSize;
+          currentProbeIndex = (originalInitialHash + probes * probes) % tableSize
+          currentSteps.push(`Quadratic Probing: Next probe index is (${originalInitialHash} + ${probes}²) % ${tableSize} = ${currentProbeIndex}`)
         } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHash = 7 - (originalInitialHash % 7); // Secondary hash function
-          currentProbeIndex = (originalInitialHash + probes * secondaryHash) % tableSize;
+          const secondaryHashVal = 7 - (originalInitialHash % 7); // Simplified secondary hash
+          currentProbeIndex = (originalInitialHash + probes * secondaryHashVal) % tableSize;
+          currentSteps.push(`Double Hashing: Next probe index is (${originalInitialHash} + ${probes} * ${secondaryHashVal}) % ${tableSize} = ${currentProbeIndex}`)
         }
       }
 
       if (!inserted) {
-        toast.error('Table is full! Cannot insert more keys after probing.', { position: 'top-center' });
-        setIsAnimating(false);
-        return;
+        currentSteps.push(`Table is full! Cannot insert key ${key} after probing.`)
+        toast.error('Table is full! Cannot insert more keys after probing.', { position: 'top-center' })
+        setIsAnimating(false)
+        setInsertionSteps(currentSteps)
+        return
       }
     }
 
     if (inserted) {
-      const newKeys = [...keys, key];
-      setKeys(newKeys);
+      const newKeys = [...keys, key]
+      setKeys(newKeys)
+      currentSteps.push(`Key ${key} successfully inserted at final index ${finalHash}.`)
 
-      // Calculate collisions (only relevant for chaining visually)
       const collisions = selectedCollisionResolution.id === 'chaining' ? 
         newKeys.reduce((acc, k) => {
           const hash = hashFn(k, tableSize);
           const sameHash = newKeys.filter(k2 => hashFn(k2, tableSize) === hash);
           return acc + (sameHash.length > 1 ? 1 : 0);
-        }, 0) : 0; // Collisions not typically counted this way for probing
+        }, 0) : 0;
 
-      // Update analytics
       setAnalytics({
         collisions,
         probes,
         loadFactor: newKeys.length / tableSize
-      });
+      })
       
-      // Set active state for animation
-      setActiveIndex(finalHash);
-      setActiveKey(key);
-      setOperation('insert');
+      setActiveIndex(finalHash)
+      setActiveKey(key)
+      setOperation('insert')
       
-      // Reset active state after animation
       setTimeout(() => {
-        setActiveIndex(null);
-        setActiveKey(null);
-        setOperation(null);
-        setIsAnimating(false);
-      }, 1000);
-    } else {
-      setIsAnimating(false);
-    }
-    if (inserted) {
+        setActiveIndex(null)
+        setActiveKey(null)
+        setOperation(null)
+        setIsAnimating(false)
+      }, 1000)
+
       toast.success(`Key '${key}' inserted at index ${finalHash}!`, { 
         position: 'top-center',
-        autoClose: 1500 // Reduced from default 5000ms to 1500ms
-      });
+        autoClose: 1500
+      })
+    } else {
+      setIsAnimating(false)
     }
+    setInsertionSteps(currentSteps)
   }
 
   const handleDelete = (key) => {
@@ -325,7 +337,7 @@ export default function Visualizer() {
         } else if (selectedCollisionResolution.id === 'quadratic') {
           currentIndex = (initialHash + probes * probes) % tableSize;
         } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHash = 7 - (initialHash % 7); // Secondary hash function
+          const secondaryHash = 7 - (initialHash % 7);
           currentIndex = (initialHash + probes * secondaryHash) % tableSize;
         }
 
@@ -378,36 +390,27 @@ export default function Visualizer() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+          className="space-y-8"
         >
-          {/* Left Panel */}
-          <div className="space-y-8">
-            <HashFunctionSelector
-              functions={hashFunctions}
-              selected={selectedHashFunction}
-              onSelect={setSelectedHashFunction}
-            />
-            {selectedHashFunction.id === 'custom' && (
-              <CustomHashEditor onChange={setCustomHashFn} />
-            )}
-            <CollisionResolutionSelector
-              methods={collisionResolutions}
-              selected={selectedCollisionResolution}
-              onSelect={setSelectedCollisionResolution}
-            />
-              <AnalyticsPanel data={analytics} />
-          </div>
-          {/* Right Panel */}
-          <div className="space-y-8">
-            <ControlPanel
-              onInsert={handleInsert}
-              onDelete={handleDelete}
-              onSearch={handleSearch}
-              isAnimating={isAnimating}
-              onTableSizeChange={handleTableSizeChange}
-              tableSize={tableSize}
-            />
-          
+          {/* Control Panel (now includes selectors) */}
+          <ControlPanel
+            onInsert={handleInsert}
+            onDelete={handleDelete}
+            onSearch={handleSearch}
+            isAnimating={isAnimating}
+            onTableSizeChange={handleTableSizeChange}
+            tableSize={tableSize}
+            hashFunctions={hashFunctions}
+            selectedHashFunction={selectedHashFunction}
+            onSelectHashFunction={setSelectedHashFunction}
+            collisionResolutions={collisionResolutions}
+            selectedCollisionResolution={selectedCollisionResolution}
+            onSelectCollisionResolution={setSelectedCollisionResolution}
+            customHashEditor={<CustomHashEditor onChange={setCustomHashFn} />}
+          />
+
+          {/* Hash Table with Toggle for Insertion Steps */}
+          <div className="card space-y-4">
             <HashTable
               size={tableSize}
               keys={keys}
@@ -418,7 +421,40 @@ export default function Visualizer() {
               activeKey={activeKey}
               operation={operation}
             />
+            <button
+              onClick={() => setShowInsertionSteps(!showInsertionSteps)}
+              className="py-2 px-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+            >
+              {showInsertionSteps ? 'Hide Insertion Steps' : 'Show Insertion Steps'}
+            </button>
           </div>
+
+          {/* Insertion Steps Panel - Conditionally Rendered */}
+          {showInsertionSteps && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="card space-y-2"
+            >
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Insertion Steps</h2>
+              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md h-64 overflow-y-auto">
+                {insertionSteps.length > 0 ? (
+                  <ul className="list-disc list-inside space-y-1 text-gray-800 dark:text-gray-200">
+                    {insertionSteps.map((step, index) => (
+                      <li key={index}>{step}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 dark:text-gray-400">No insertion steps to display yet. Insert a key to see the process!</p>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Analytics Panel */}
+          <AnalyticsPanel data={analytics} />
         </motion.div>
       )}
 

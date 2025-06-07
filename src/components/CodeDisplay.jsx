@@ -1,4 +1,11 @@
 import { useState, useEffect } from 'react'
+import Editor from 'react-simple-code-editor'
+import { highlight, languages } from 'prismjs/components/prism-core'
+import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-java'
+import 'prismjs/components/prism-csharp' // C++ shares many similarities, can use this for highlight
+import 'prismjs/components/prism-python'
 
 const hashFunctionCodes = {
   division: {
@@ -925,6 +932,29 @@ class HashTableDoubleHashing {
   },
 }
 
+const operationSpecificCodes = {
+  random: {
+    javascript: `function generateRandomKey() {
+  return Math.floor(Math.random() * 1000); // Key between 0-999
+}`,
+    cpp: `int generateRandomKey() {
+  // Requires <cstdlib> for rand() and <ctime> for srand(time(NULL))
+  // Call srand(time(NULL)) once at program start for better randomness
+  return rand() % 1000; // Key between 0-999
+}`,
+    java: `import java.util.Random;
+
+public int generateRandomKey() {
+  Random rand = new Random();
+  return rand.nextInt(1000); // Key between 0-999
+}`,
+    python: `import random
+
+def generate_random_key():
+  return random.randint(0, 999) # Key between 0-999`,
+  },
+}
+
 export function CodeDisplay({
   operation,
   activeKey,
@@ -936,48 +966,74 @@ export function CodeDisplay({
   const [currentCode, setCurrentCode] = useState('')
 
   useEffect(() => {
-    let codeToDisplay = '';
-    if (hashFunctionId && hashFunctionCodes[hashFunctionId]) {
-      codeToDisplay = hashFunctionCodes[hashFunctionId][selectedLanguage] || '';
-    } else if (collisionResolutionId && collisionResolutionCodes[collisionResolutionId]) {
-      codeToDisplay = collisionResolutionCodes[collisionResolutionId][selectedLanguage] || '';
+    let code = ''
+    const hashFnCode = hashFunctionCodes[hashFunctionId]?.[selectedLanguage]
+
+    if (operation === 'insert' || operation === 'search' || operation === 'delete') {
+      const operationSpecificCode = collisionResolutionCodes[collisionResolutionId]?.[operation]?.[selectedLanguage]
+      if (hashFnCode && operationSpecificCode) {
+        code = `${hashFnCode}\n\n${operationSpecificCode}`
+      } else if (operationSpecificCode) { // If only operation code exists
+        code = operationSpecificCode
+      } else {
+        code = `// Code for ${operation} with ${collisionResolutionId} not available in ${selectedLanguage}.`
+      }
+    } else if (operation === 'random') {
+      code = operationSpecificCodes.random[selectedLanguage]
     }
-    setCurrentCode(codeToDisplay);
-  }, [hashFunctionId, collisionResolutionId, selectedLanguage]);
+    else {
+      // Default: show hash function and collision resolution combined
+      const collisionResCode = collisionResolutionCodes[collisionResolutionId]?.[selectedLanguage]
+      if (hashFnCode && collisionResCode) {
+        code = `${hashFnCode}\n\n${collisionResCode}`
+      } else if (hashFnCode) {
+        code = hashFnCode
+      } else if (collisionResCode) {
+        code = collisionResCode
+      } else {
+        code = '// Select a hash function and collision resolution method to view code.'
+      }
+    }
+
+    setCurrentCode(code)
+  }, [hashFunctionId, collisionResolutionId, selectedLanguage, operation])
 
   return (
-    <div className="card">
+    <div className="card space-y-4">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-        Code Implementation
+        Code ({operation ? operation.charAt(0).toUpperCase() + operation.slice(1) : 'Overview'})
       </h2>
+
+      {/* Language Selector */}
       <div className="flex space-x-2 mb-4">
-        {Object.keys(hashFunctionCodes.division).map((lang) => (
+        {['javascript', 'cpp', 'java', 'python'].map(lang => (
           <button
             key={lang}
+            className={`py-2 px-4 rounded-md text-sm font-medium ${selectedLanguage === lang ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'}`}
             onClick={() => setSelectedLanguage(lang)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors
-              ${selectedLanguage === lang 
-                ? 'bg-blue-500 text-white' 
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-              }`}
           >
             {lang.charAt(0).toUpperCase() + lang.slice(1)}
           </button>
         ))}
       </div>
-      
-      <div className="relative">
-        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-          <code>{currentCode}</code>
-        </pre>
-        
-        {operation && activeKey && (
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
-            <p className="text-sm text-blue-700 dark:text-blue-300">
-              Current Operation: {operation} {activeKey} at index {activeKey % size}
-            </p>
-          </div>
-        )}
+
+      <div className="bg-gray-800 rounded-lg p-4 font-mono text-sm overflow-auto max-h-[600px] shadow-inner">
+        <Editor
+          value={currentCode}
+          onValueChange={() => {}} // Read-only
+          highlight={code => {
+            const lang = selectedLanguage === 'cpp' ? languages.csharp : languages[selectedLanguage]
+            return highlight(code, lang, selectedLanguage)
+          }}
+          padding={10}
+          style={{
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: '#f8f8f2',
+          }}
+          className="min-h-[400px]"
+        />
       </div>
     </div>
   )

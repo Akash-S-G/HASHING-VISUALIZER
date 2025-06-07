@@ -4,7 +4,7 @@ import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline'
 
 export function HashFunctionSelector({ functions, selected, onSelect }) {
   return (
-    <div className="card">
+    <div className="card p-4">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
         Hash Function
       </h2>
