@@ -5,7 +5,6 @@ import LandingPage from '@pages/LandingPage'
 import Visualizer from '@pages/Visualizer'
 import RealWorldExplorer from '@pages/RealWorldExplorer'
 import LearnHashing from '@pages/LearnHashing'
-import Credits from '@pages/Credits'
 
 function App() {
   return (
@@ -24,7 +23,6 @@ function App() {
             <Route path="/visualizer" element={<Visualizer />} />
             <Route path="/real-world" element={<RealWorldExplorer />} />
             <Route path="/learn" element={<LearnHashing />} />
-            <Route path="/credits" element={<Credits />} />
           </Routes>
         </motion.main>
       </AnimatePresence>

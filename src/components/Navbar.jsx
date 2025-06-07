@@ -8,7 +8,6 @@ const navigation = [
   { name: 'Visualizer', href: '/visualizer' },
   { name: 'Real World', href: '/real-world' },
   { name: 'Learn', href: '/learn' },
-  { name: 'Credits', href: '/credits' },
 ]
 
 export default function Navbar() {
