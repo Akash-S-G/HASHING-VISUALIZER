@@ -114,12 +114,48 @@ export default function HashTable({
     const indexHeight = 20  // Height for index display
     const keySpacing = 25   // Spacing between keys (increased for better visibility)
 
+    // Calculate max chain length for dynamic height
+    let maxChainLength = 1; // Minimum height for at least one element
+    if (collisionResolution === 'chaining') {
+      tableState.forEach(bucket => {
+        if (Array.isArray(bucket)) {
+          maxChainLength = Math.max(maxChainLength, bucket.length);
+        }
+      });
+    }
+
+    // Adjust SVG height based on max chain length for chaining
+    const dynamicHeight = collisionResolution === 'chaining' 
+      ? (indexHeight - 5) + (maxChainLength * (30 + 10)) + 60 // nodeHeight + nodeSpacing + some padding
+      : cellHeight + indexHeight + 50; // Original height for probing
+
     // Set SVG width and height to accommodate indices and overflow
     svg.attr('width', totalWidth)
-      .attr('height', cellHeight + indexHeight + 50)  // Added extra height for overflow display
+      .attr('height', dynamicHeight); // Dynamic height
 
     // Clear previous content
     svg.selectAll('*').remove()
+
+    // Define arrowhead marker
+    svg.append('defs').append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '-5 -5 10 10')
+      .attr('refX', 0) // Adjusted to be at the tip of the arrow
+      .attr('refY', 0)
+      .attr('orient', 'auto')
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .append('path')
+      .attr('d', 'M 0,0 m -5,-5 L 5,0 L -5,5 Z')
+      .attr('fill', '#6b7280'); // Color of the arrow
+
+    // Add glow filter for collision animation (moved here to be after defs)
+    const defs = svg.select('defs');
+    defs.append('filter')
+      .attr('id', 'glow')
+      .append('feGaussianBlur')
+      .attr('stdDeviation', '2.5')
+      .attr('result', 'coloredBlur');
 
     // Create cells
     const cells = svg
@@ -172,6 +208,35 @@ export default function HashTable({
     cells.each(function(d) {
       const cellGroup = d3.select(this)
 
+      // Add operation indicator with enhanced animation (now positioned behind keys)
+      if (d === activeIndex && activeKey !== null) {
+        const operationGroup = cellGroup
+          .append('g')
+          .attr('opacity', 0) // Start hidden
+          .attr('transform', `translate(${cellWidth / 2}, ${cellHeight / 2}) scale(0.8)`); // Centered within cell
+
+        operationGroup
+          .append('text')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle') // Vertically center text
+          .attr('fill', '#4b5563')
+          .attr('font-size', '12px')
+          .text(`${operation} ${activeKey}`);
+
+        // Animate operation indicator with elastic pop-up
+        operationGroup
+          .transition()
+          .duration(600)
+          .attr('opacity', 1)
+          .attr('transform', `translate(${cellWidth / 2}, ${cellHeight / 2}) scale(1)`) // Pop up to full size
+          .ease(d3.easeElastic.amplitude(0.5).period(0.3))
+          .transition()
+          .delay(800)
+          .duration(400)
+          .attr('opacity', 0)
+          .attr('transform', `translate(${cellWidth / 2}, ${cellHeight / 2 - 10}) scale(0.8)`); // Fade out upwards
+      }
+
       let cellKeys = []
       if (collisionResolution === 'chaining') {
         // For chaining, the cell's data is an array of keys
@@ -189,110 +254,152 @@ export default function HashTable({
       const nodeHeight = 30;
       const nodeSpacing = nodeHeight + 10; // Spacing between nodes
 
-      // Calculate starting position for keys
-      const startY = 10; // Adjusted starting Y to allow space for linked list nodes
+      // Calculate starting position for keys within the main cell for probing
+      const startYInCell = 20;
+
+      // Calculate starting Y for linked list nodes outside the cell
+      const startYOutsideCell = cellHeight + 30; // Start below the cell, with some padding
 
       // For probing methods, maxVisibleKeys is 1 as only one key resides per slot
-      const maxVisibleKeys = collisionResolution === 'chaining' ? 2 : 1 // Keep first 2 visible
+      const maxVisibleKeys = collisionResolution === 'chaining' ? 2 : 1 // Keep first 2 visible in the main cell
       const hasOverflow = cellKeys.length > maxVisibleKeys && collisionResolution === 'chaining'
 
       // Add each key to the cell with animations
       cellKeys.forEach((key, index) => {
         if (collisionResolution === 'chaining') {
-          const xPos = cellWidth / 2;
-          const yPos = startY + (index * nodeSpacing);
+          // Only draw nodes for keys that are part of the overflowed chain
+          if (index < maxVisibleKeys && cellKeys.length > 0) {
+            // Draw the key inside the main cell if it's one of the first few
+            const keyText = cellGroup.append('text')
+              .attr('x', cellWidth / 2)
+              .attr('y', startYInCell + (index * keySpacing))
+              .attr('text-anchor', 'middle')
+              .attr('dominant-baseline', 'middle')
+              .attr('fill', '#000000')
+              .attr('font-size', '16px')
+              .attr('font-weight', '600')
+              .text(key);
 
-          const keyGroup = cellGroup
-            .append('g')
-            .attr('opacity', 0) // Start hidden for animation
-            .attr('transform', `translate(${xPos}, ${yPos})`);
+            // Animate initial keys within cell
+            const isActiveKey = (key === activeKey && d === activeIndex);
+            keyText.transition()
+              .duration(600)
+              .attr('opacity', 1)
+              .attr('transform', `scale(${isActiveKey ? 1.2 : 1})`)
+              .ease(d3.easeElastic.amplitude(0.5).period(0.3));
 
-          // Add node background
-          keyGroup.append('rect')
-            .attr('x', -nodeWidth / 2)
-            .attr('y', -nodeHeight / 2)
-            .attr('width', nodeWidth)
-            .attr('height', nodeHeight)
-            .attr('fill', '#f3f4f6')
-            .attr('stroke', '#d1d5db')
-            .attr('stroke-width', 1)
-            .attr('rx', 4);
+          } else if (index >= maxVisibleKeys) {
+            // Draw linked list nodes outside the cell for overflowed keys
+            const xPos = cellWidth / 2;
+            const yPos = startYOutsideCell + ((index - maxVisibleKeys) * nodeSpacing); // Adjust index for external nodes
 
-          // Add key text
-          keyGroup.append('text')
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'middle')
-            .attr('fill', '#1f2937')
-            .attr('font-size', '14px')
-            .attr('font-weight', 'bold')
-            .text(key);
+            const keyGroup = cellGroup
+              .append('g')
+              .attr('opacity', 0) // Start hidden for animation
+              .attr('transform', `translate(${xPos}, ${yPos})`);
 
-          // Add connecting lines (pointers)
-          if (index < cellKeys.length - 1) {
-            // Line to next node
+            // Add node background
+            keyGroup.append('rect')
+              .attr('x', -nodeWidth / 2)
+              .attr('y', -nodeHeight / 2)
+              .attr('width', nodeWidth)
+              .attr('height', nodeHeight)
+              .attr('fill', '#f3f4f6')
+              .attr('stroke', '#d1d5db')
+              .attr('stroke-width', 1)
+              .attr('rx', 4);
+
+            // Add key text
+            keyGroup.append('text')
+              .attr('text-anchor', 'middle')
+              .attr('dominant-baseline', 'middle')
+              .attr('fill', '#1f2937')
+              .attr('font-size', '14px')
+              .attr('font-weight', 'bold')
+              .text(key);
+
+            // Add connecting lines (pointers) between external nodes
+            if (index < cellKeys.length - 1) {
+              cellGroup.append('line')
+                .attr('x1', xPos)
+                .attr('y1', yPos + nodeHeight / 2)
+                .attr('x2', xPos)
+                .attr('y2', yPos + nodeHeight / 2 + (nodeSpacing - nodeHeight))
+                .attr('stroke', '#6b7280')
+                .attr('stroke-width', 1)
+                .attr('marker-end', 'url(#arrowhead)')
+                .attr('opacity', 0)
+                .transition()
+                .duration(400)
+                .attr('opacity', 1);
+            } else {
+              // Null pointer at the end of the chain
+              cellGroup.append('line')
+                .attr('x1', xPos)
+                .attr('y1', yPos + nodeHeight / 2)
+                .attr('x2', xPos)
+                .attr('y2', yPos + nodeHeight / 2 + 15)
+                .attr('stroke', '#ef4444')
+                .attr('stroke-width', 1)
+                .attr('opacity', 0)
+                .transition()
+                .duration(400)
+                .attr('opacity', 1);
+
+              cellGroup.append('text')
+                .attr('x', xPos + 10)
+                .attr('y', yPos + nodeHeight / 2 + 20)
+                .attr('text-anchor', 'start')
+                .attr('fill', '#ef4444')
+                .attr('font-size', '12px')
+                .text('NULL')
+                .attr('opacity', 0)
+                .transition()
+                .duration(400)
+                .attr('opacity', 1);
+            }
+
+            // Animate external nodes
+            const isActiveKey = (key === activeKey && d === activeIndex);
+            keyGroup
+              .transition()
+              .duration(600)
+              .attr('opacity', 1)
+              .attr('transform', `translate(${xPos}, ${yPos}) scale(${isActiveKey ? 1.1 : 1})`)
+              .ease(d3.easeElastic.amplitude(0.5).period(0.3));
+
+            // Add hover effects
+            keyGroup
+              .on('mouseover', function() {
+                d3.select(this)
+                  .transition()
+                  .duration(200)
+                  .attr('transform', `translate(${xPos}, ${yPos}) scale(1.1)`);
+              })
+              .on('mouseout', function() {
+                const isActiveKey = (key === activeKey && d === activeIndex);
+                d3.select(this)
+                  .transition()
+                  .duration(200)
+                  .attr('transform', `translate(${xPos}, ${yPos}) scale(${isActiveKey ? 1.1 : 1})`);
+              });
+          }
+
+          // Add initial connector line from cell to first external node if it exists
+          if (hasOverflow && index === maxVisibleKeys) {
             cellGroup.append('line')
-              .attr('x1', xPos)
-              .attr('y1', yPos + nodeHeight / 2)
-              .attr('x2', xPos)
-              .attr('y2', yPos + nodeHeight / 2 + (nodeSpacing - nodeHeight))
+              .attr('x1', cellWidth / 2)
+              .attr('y1', startYInCell + ((maxVisibleKeys - 1) * keySpacing) + (nodeHeight / 2)) // End of last visible key in cell
+              .attr('x2', cellWidth / 2)
+              .attr('y2', startYOutsideCell - (nodeHeight / 2)) // Start of first external node
               .attr('stroke', '#6b7280')
               .attr('stroke-width', 1)
-              .attr('marker-end', 'url(#arrowhead)') // Attach arrowhead marker
-              .attr('opacity', 0)
-              .transition()
-              .duration(400)
-              .attr('opacity', 1);
-          } else {
-            // Null pointer at the end of the chain
-            cellGroup.append('line')
-              .attr('x1', xPos)
-              .attr('y1', yPos + nodeHeight / 2)
-              .attr('x2', xPos)
-              .attr('y2', yPos + nodeHeight / 2 + 15) // Short line for null
-              .attr('stroke', '#ef4444')
-              .attr('stroke-width', 1)
-              .attr('opacity', 0)
-              .transition()
-              .duration(400)
-              .attr('opacity', 1);
-
-            cellGroup.append('text')
-              .attr('x', xPos + 10)
-              .attr('y', yPos + nodeHeight / 2 + 20)
-              .attr('text-anchor', 'start')
-              .attr('fill', '#ef4444')
-              .attr('font-size', '12px')
-              .text('NULL')
+              .attr('marker-end', 'url(#arrowhead)')
               .attr('opacity', 0)
               .transition()
               .duration(400)
               .attr('opacity', 1);
           }
-
-          // Animate nodes
-          const isActiveKey = (key === activeKey && d === activeIndex);
-          keyGroup
-            .transition()
-            .duration(600)
-            .attr('opacity', 1)
-            .attr('transform', `translate(${xPos}, ${yPos}) scale(${isActiveKey ? 1.1 : 1})`)
-            .ease(d3.easeElastic.amplitude(0.5).period(0.3));
-
-          // Add hover effects
-          keyGroup
-            .on('mouseover', function() {
-              d3.select(this)
-                .transition()
-                .duration(200)
-                .attr('transform', `translate(${xPos}, ${yPos}) scale(1.1)`);
-            })
-            .on('mouseout', function() {
-              const isActiveKey = (key === activeKey && d === activeIndex);
-              d3.select(this)
-                .transition()
-                .duration(200)
-                .attr('transform', `translate(${xPos}, ${yPos}) scale(${isActiveKey ? 1.1 : 1})`);
-            });
 
         } else { // Existing probing visualization logic
           const isVisible = index < maxVisibleKeys
@@ -302,7 +409,7 @@ export default function HashTable({
           const keyGroup = cellGroup
             .append('g')
             .attr('opacity', isVisible ? 0 : 0)  // Start hidden if overflow
-            .attr('transform', `translate(${cellWidth / 2}, ${startY + (index * keySpacing)}) scale(0.5)`)
+            .attr('transform', `translate(${cellWidth / 2}, ${startYInCell + (index * keySpacing)}) scale(0.5)`)
             .attr('class', isOverflow ? 'overflow-key' : 'visible-key')
 
           // Add key text
@@ -314,12 +421,6 @@ export default function HashTable({
             .attr('font-weight', '600')
             .text(key)
 
-          // Remove existing connecting line for chaining, as it's now handled by the new chaining logic
-          // This condition should prevent it from being drawn for probing
-          if (index > 0 && collisionResolution === 'chaining') {
-            // No longer needed, as chaining has its own visual representation
-          }
-
           // Animate visible keys
           if (isVisible) {
             const isActiveKey = (key === activeKey && d === activeIndex)
@@ -327,7 +428,7 @@ export default function HashTable({
               .transition()
               .duration(600)
               .attr('opacity', 1)
-              .attr('transform', `translate(${cellWidth / 2}, ${startY + (index * keySpacing)}) scale(${isActiveKey ? 1.2 : 1})`)
+              .attr('transform', `translate(${cellWidth / 2}, ${startYInCell + (index * keySpacing)}) scale(${isActiveKey ? 1.2 : 1})`)
               .ease(d3.easeElastic.amplitude(0.5).period(0.3))
           }
 
@@ -337,109 +438,17 @@ export default function HashTable({
               d3.select(this)
                 .transition()
                 .duration(200)
-                .attr('transform', `translate(${cellWidth / 2}, ${startY + (index * keySpacing)}) scale(1.1)`);
+                .attr('transform', `translate(${cellWidth / 2}, ${startYInCell + (index * keySpacing)}) scale(1.1)`);
             })
             .on('mouseout', function() {
               const isActiveKey = (key === activeKey && d === activeIndex);
               d3.select(this)
                 .transition()
                 .duration(200)
-                .attr('transform', `translate(${cellWidth / 2}, ${startY + (index * keySpacing)}) scale(${isActiveKey ? 1.2 : 1})`);
+                .attr('transform', `translate(${cellWidth / 2}, ${startYInCell + (index * keySpacing)}) scale(${isActiveKey ? 1.2 : 1})`);
             });
         }
       });
-
-      // Add overflow indicator and hover effect only for chaining (adjust for new chaining visual)
-      if (hasOverflow && collisionResolution === 'chaining') {
-        const overflowCount = cellKeys.length - maxVisibleKeys;
-        const overflowGroup = cellGroup
-          .append('g')
-          .attr('opacity', 0)
-          .attr('transform', `translate(${cellWidth / 2}, ${startY + (maxVisibleKeys * nodeSpacing)})`); // Use nodeSpacing
-
-        // Show overflow indicator (now just an invisible group to trigger hover)
-        overflowGroup
-          .transition()
-          .duration(300)
-          .attr('opacity', 1);
-
-        // Create overflow display group (initially hidden)
-        const overflowDisplay = cellGroup
-          .append('g')
-          .attr('class', 'overflow-display')
-          .attr('opacity', 0)
-          .attr('transform', `translate(0, ${cellHeight + 5})`);
-
-        // Add overflow keys to display
-        cellKeys.slice(maxVisibleKeys).forEach((key, index) => {
-          const overflowKey = overflowDisplay
-            .append('text')
-            .attr('x', cellWidth / 2)
-            .attr('y', index * nodeSpacing) // Use nodeSpacing
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#000000')
-            .attr('font-size', '14px')
-            .attr('font-weight', '600')  // Make text bold
-            .text(key);
-
-          // Add connecting line for chaining in overflow
-          overflowDisplay
-            .append('line')
-            .attr('x1', cellWidth / 2)
-            .attr('y1', (index - 1) * nodeSpacing + nodeHeight / 2) // Use nodeSpacing and nodeHeight
-            .attr('x2', cellWidth / 2)
-            .attr('y2', index * nodeSpacing - nodeHeight / 2) // Use nodeSpacing and nodeHeight
-            .attr('stroke', '#6b7280')
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4');
-
-          // Add hover effects for overflow keys
-          overflowKey
-            .on('mouseover', function() {
-              d3.select(this)
-                .transition()
-                .duration(200)
-                .attr('fill', '#2563eb')  // Change color on hover
-                .attr('font-size', '16px');  // Slightly larger on hover
-            })
-            .on('mouseout', function() {
-              d3.select(this)
-                .transition()
-                .duration(200)
-                .attr('fill', '#000000')
-                .attr('font-size', '14px');
-            });
-        });
-
-        // Add hover effect to show overflow
-        cellGroup
-          .on('mouseover', function() {
-            // Show overflow display
-            overflowDisplay
-              .transition()
-              .duration(200)
-              .attr('opacity', 1);
-            
-            // Hide overflow indicator
-            overflowGroup
-              .transition()
-              .duration(200)
-              .attr('opacity', 0);
-          })
-          .on('mouseout', function() {
-            // Hide overflow display
-            overflowDisplay
-              .transition()
-              .duration(200)
-              .attr('opacity', 0);
-            
-            // Show overflow indicator
-            overflowGroup
-              .transition()
-              .duration(200)
-              .attr('opacity', 1);
-          });
-      }
 
       // Add collision indicator with enhanced animation (only for chaining)
       if (cellKeys.length > 1 && collisionResolution === 'chaining') {
@@ -529,40 +538,6 @@ export default function HashTable({
         });
       }
     })
-
-    // Add operation indicator with enhanced animation
-    if (activeKey !== null) {
-      const hash = typeof hashFunction === 'function'
-        ? hashFunction(activeKey, size)
-        : activeKey % size
-      console.log(`Operation: ${operation} ${activeKey} at cell ${hash}`)
-
-      const operationGroup = cells
-        .filter((d) => d === activeIndex) // Filter by activeIndex as it's the final placement
-        .append('g')
-        .attr('opacity', 0)
-        .attr('transform', `translate(${cellWidth / 2}, ${cellHeight - 5}) scale(0.8)`);
-
-      operationGroup
-        .append('text')
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#4b5563')
-        .attr('font-size', '12px')
-        .text(`${operation} ${activeKey}`);
-
-      // Animate operation indicator with elastic pop-up
-      operationGroup
-        .transition()
-        .duration(600)
-        .attr('opacity', 1)
-        .attr('transform', `translate(${cellWidth / 2}, ${cellHeight - 5}) scale(1)`)
-        .ease(d3.easeElastic.amplitude(0.5).period(0.3))
-        .transition()
-        .delay(800)
-        .duration(400)
-        .attr('opacity', 0)
-        .attr('transform', `translate(${cellWidth / 2}, ${cellHeight - 15}) scale(0.8)`);
-    }
 
     // Scroll to active index with smooth animation
     if (activeIndex !== null) {

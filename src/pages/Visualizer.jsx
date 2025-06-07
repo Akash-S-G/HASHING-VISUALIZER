@@ -114,6 +114,15 @@ export default function Visualizer() {
       // For chaining, we just add the key to the list
       finalHash = initialHash;
       inserted = true; // Always inserted in chaining
+      
+      // Check if this is a new collision
+      const existingKeys = keys.filter(k => hashFn(k, tableSize) === initialHash);
+      if (existingKeys.length > 0) {
+        toast.info(`Collision occurred! Key '${key}' collided with existing key(s) at index ${initialHash}`, {
+          position: 'top-center',
+          autoClose: 2000
+        });
+      }
     } else {
       // Probing methods: check for table full before attempting insertion
       if (keys.length >= tableSize) {
@@ -131,6 +140,14 @@ export default function Visualizer() {
           inserted = true;
           probes = i; // Number of probes
           break;
+        }
+
+        // If we hit a collision during probing, show toast
+        if (i === 0) { // Only show for first collision
+          toast.info(`Collision occurred! Key '${key}' collided at index ${initialHash}`, {
+            position: 'top-center',
+            autoClose: 2000
+          });
         }
 
         probes++;
@@ -186,7 +203,10 @@ export default function Visualizer() {
       setIsAnimating(false);
     }
     if (inserted) {
-      toast.success(`Key '${key}' inserted at index ${finalHash}!`, { position: 'top-center' });
+      toast.success(`Key '${key}' inserted at index ${finalHash}!`, { 
+        position: 'top-center',
+        autoClose: 1500 // Reduced from default 5000ms to 1500ms
+      });
     }
   }
 
