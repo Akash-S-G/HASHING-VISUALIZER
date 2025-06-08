@@ -5,9 +5,10 @@ import { SunIcon, MoonIcon } from '@heroicons/react/24/outline'
 
 const navigation = [
   { name: 'Home', href: '/' },
+  { name: 'Learn', href: '/learn' },
   { name: 'Visualizer', href: '/visualizer' },
   { name: 'Real World', href: '/real-world' },
-  { name: 'Learn', href: '/learn' },
+  
   { name: 'Code', href: '/code' },
 ]
 

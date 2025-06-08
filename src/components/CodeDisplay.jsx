@@ -994,7 +994,7 @@ export function CodeDisplay({
         code = '// Select a hash function and collision resolution method to view code.'
       }
     }
-
+    // If no code found, provide a default message
     setCurrentCode(code)
   }, [hashFunctionId, collisionResolutionId, selectedLanguage, operation])
 

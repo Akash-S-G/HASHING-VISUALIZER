@@ -13,6 +13,7 @@ export function AnalyticsPanel({ data }) {
   // Create chart data from current analytics
   const chartData = [
     { name: 'Current', collisions: data.collisions, probes: data.probes, loadFactor: data.loadFactor },
+    
   ]
 
   return (

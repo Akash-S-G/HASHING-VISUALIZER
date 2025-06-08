@@ -103,7 +103,7 @@ export function ControlPanel({
                 value={tableSize}
                 onChange={(e) => onTableSizeChange(parseInt(e.target.value) || 10)}
                 min="1"
-                max="100"
+                // max="500"
                 className="block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:text-white sm:text-sm"
                 disabled={isAnimating}
               />

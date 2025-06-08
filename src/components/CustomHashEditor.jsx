@@ -135,7 +135,7 @@ export function CustomHashEditor({ onChange }) {
       <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
         <p>Requirements:</p>
         <ul className="list-disc list-inside">
-          <li>Function must be an arrow function</li>
+          {/* <li>Function must be an arrow function</li> */}
           <li>Must take (key, size) as parameters</li>
           <li>Must return an integer between 0 and size-1</li>
           <li>Should handle negative numbers</li>
