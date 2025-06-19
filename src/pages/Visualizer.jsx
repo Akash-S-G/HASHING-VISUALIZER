@@ -46,7 +46,7 @@ export default function Visualizer() {
 
   const handleTableSizeChange = (newSize) => {
     if (newSize < 1) newSize = 1
-    if (newSize > 100) newSize = 100
+    if (newSize > 1000) newSize = 1000
     setTableSize(newSize)
   }
 
