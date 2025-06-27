@@ -39,9 +39,9 @@ export default function Visualizer() {
   const [customHashFn, setCustomHashFn] = useState((key, size) => ((key % size) + size) % size)
   const [activeIndex, setActiveIndex] = useState(null)
   const [activeKey, setActiveKey] = useState(null)
-  const [operation, setOperation] = useState(null)
-  const [insertionSteps, setInsertionSteps] = useState([])
-  const [showInsertionSteps, setShowInsertionSteps] = useState(false)
+  const [currentSteps, setCurrentSteps] = useState([])
+  const [currentOperation, setCurrentOperation] = useState(null)
+  const [showSteps, setShowSteps] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
 
   const handleTableSizeChange = (newSize) => {
@@ -123,193 +123,236 @@ export default function Visualizer() {
   const handleInsert = (key) => {
     if (isAnimating) return
     setIsAnimating(true)
-    setInsertionSteps([])
-
-    console.log('handleInsert: Calling getHashFunction()');
+    
+    // Initialize steps tracking
+    setCurrentSteps([])
+    setCurrentOperation('insert')
+    let steps = []
+    
     const hashFn = getHashFunction()
-    console.log('handleInsert: hashFn received from getHashFunction():', typeof hashFn, hashFn);
-
-    const hashFnName = hashFunctions.find(f => f.id === selectedHashFunction.id)?.name || selectedHashFunction.id
-    const initialHash = hashFn(key, tableSize)
-    let finalHash = initialHash
-    let probes = 0
-    let inserted = false
-    let currentSteps = []
-
-    currentSteps.push(`Attempting to insert key: ${key}`)
-    currentSteps.push(`Using Hash Function: ${hashFnName}`)
-    if (selectedHashFunction.id !== 'custom') {
-      currentSteps.push(`Formula: ${selectedHashFunction.description}`);
+    const hashFnName = selectedHashFunction.name || 'Default Hash Function'
+    
+    steps.push(`Attempting to insert key: ${key}`)
+    steps.push(`Using Hash Function: ${hashFnName}`)
+    
+    if (selectedHashFunction.description) {
+      steps.push(`Formula: ${selectedHashFunction.description}`);
     }
-    currentSteps.push(`Initial Hash Value: ${initialHash}`)
+    
+    const initialHash = hashFn(key, tableSize);
+    steps.push(`Initial Hash Value: ${initialHash}`)
 
     if (selectedCollisionResolution.id === 'chaining') {
-      finalHash = initialHash
-      inserted = true
+      steps.push(`Using Separate Chaining collision resolution`)
       
-      const existingKeys = keys.filter(k => hashFn(k, tableSize) === initialHash)
+      // Check if there's already a key at this hash
+      const existingKeys = keys.filter(k => hashFn(k, tableSize) === initialHash);
       if (existingKeys.length > 0) {
-        currentSteps.push(`Collision detected at index ${initialHash}. Separate Chaining: Adding key to the linked list.`)
-        toast.info(`Collision occurred! Key '${key}' collided with existing key(s) at index ${initialHash}`, {
-          autoClose: 2000
-        })
+        steps.push(`Collision detected at index ${initialHash}. Separate Chaining: Adding key to the linked list.`)
       } else {
-        currentSteps.push(`No collision at index ${initialHash}. Adding key to the empty bucket.`)
+        steps.push(`No collision at index ${initialHash}. Adding key to the empty bucket.`)
       }
-    } else {
-      if (keys.length >= tableSize) {
-        currentSteps.push(`Table is full! Cannot insert key ${key}.`)
-        toast.error('Table is full! Cannot insert more keys.', { autoClose: 2000 })
-        setIsAnimating(false)
-        setInsertionSteps(currentSteps)
-        return
-      }
-
-      let originalInitialHash = initialHash
-      let currentProbeIndex = initialHash
       
-      for (let i = 0; i < tableSize; i++) {
-        const isOccupied = keys.some(k => hashFn(k, tableSize) === currentProbeIndex)
-
-        if (!isOccupied) {
-          finalHash = currentProbeIndex
-          inserted = true
-          probes = i
-          currentSteps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is available. Inserting key ${key}.`)
-          break
-        }
-
-        currentSteps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is occupied by another key.`)
-        if (i === 0) {
-          toast.info(`Collision occurred! Key '${key}' collided at index ${initialHash}`, {
-            autoClose: 2000
-          })
-        }
-
-        probes++
-        if (selectedCollisionResolution.id === 'linear') {
-          currentProbeIndex = (originalInitialHash + probes) % tableSize
-          currentSteps.push(`Linear Probing: Next probe index is (${originalInitialHash} + ${probes}) % ${tableSize} = ${currentProbeIndex}`)
-        } else if (selectedCollisionResolution.id === 'quadratic') {
-          currentProbeIndex = (originalInitialHash + probes * probes) % tableSize
-          currentSteps.push(`Quadratic Probing: Next probe index is (${originalInitialHash} + ${probes}²) % ${tableSize} = ${currentProbeIndex}`)
-        } else if (selectedCollisionResolution.id === 'double') {
-          const secondaryHashVal = 7 - (originalInitialHash % 7); // Simplified secondary hash
-          currentProbeIndex = (originalInitialHash + probes * secondaryHashVal) % tableSize;
-          currentSteps.push(`Double Hashing: Next probe index is (${originalInitialHash} + ${probes} * ${secondaryHashVal}) % ${tableSize} = ${currentProbeIndex}`)
-        }
-      }
-
-      if (!inserted) {
-        currentSteps.push(`Table is full! Cannot insert key ${key} after probing.`)
-        toast.error('Table is full! Cannot insert more keys after probing.', { autoClose: 2000 })
-        setIsAnimating(false)
-        setInsertionSteps(currentSteps)
-        return
-      }
-    }
-
-    if (inserted) {
-      const newKeys = [...keys, key]
-      setKeys(newKeys)
-      currentSteps.push(`Key ${key} successfully inserted at final index ${finalHash}.`)
-
-      let calculatedCollisions = 0;
-      console.log('handleInsert: Calculating collisions for chaining. newKeys:', newKeys, 'tableSize:', tableSize);
-      if (selectedCollisionResolution.id === 'chaining') {
-        // For chaining, count the sum of (number of keys in bucket - 1) for all buckets with more than one key.
-        // This represents the number of 'extra' keys due to collisions.
-        const uniqueHashes = [...new Set(newKeys.map(k => hashFn(k, tableSize)))];
-        console.log('handleInsert: Unique hashes for newKeys:', uniqueHashes);
-        calculatedCollisions = uniqueHashes.reduce((sum, hash) => {
-            const bucketKeys = newKeys.filter(item => hashFn(item, tableSize) === hash);
-            console.log(`handleInsert: Hash ${hash} has ${bucketKeys.length} keys.`);
-            return sum + (bucketKeys.length > 1 ? (bucketKeys.length - 1) : 0);
-        }, 0);
-        console.log('handleInsert: Calculated collisions for chaining:', calculatedCollisions);
-      } else {
-        // For probing methods, 'probes' indicates the number of collisions encountered
-        calculatedCollisions = probes;
-        console.log('handleInsert: Calculated collisions for probing (probes):', calculatedCollisions);
-      }
-
+      setKeys([...keys, key]);
+      setCurrentSteps(steps)
+      
+      // Update analytics
+      const currentKeys = [...keys, key];
+      const uniqueHashes = [...new Set(currentKeys.map(k => hashFn(k, tableSize)))];
+      const calculatedCollisions = uniqueHashes.filter(hash => {
+          const bucketKeys = currentKeys.filter(item => hashFn(item, tableSize) === hash);
+          return bucketKeys.length > 1;
+      }).length;
+      
       setAnalytics({
         collisions: calculatedCollisions,
-        probes,
-        loadFactor: newKeys.length / tableSize
+        probes: 0,
+        loadFactor: currentKeys.length / tableSize
       })
       
-      setActiveIndex(finalHash)
+      setActiveIndex(initialHash)
       setActiveKey(key)
-      setOperation('insert')
+      setCurrentOperation('insert')
       
       setTimeout(() => {
         setActiveIndex(null)
         setActiveKey(null)
-        setOperation(null)
+        setCurrentOperation(null)
         setIsAnimating(false)
       }, 1000)
 
-      toast.success(`Key '${key}' inserted at index ${finalHash}!`, { 
+      toast.success(`Key '${key}' inserted at index ${initialHash}!`, { 
         autoClose: 1500
       })
     } else {
+      // Probing methods
+      let finalHash = initialHash;
+      let probes = 0;
+      const originalInitialHash = initialHash;
+      
+      for (let i = 0; i < tableSize; i++) {
+        const currentProbeIndex = finalHash;
+        const keyAtCurrentIndex = keys.find(k => hashFn(k, tableSize) === currentProbeIndex);
+        
+        if (!keyAtCurrentIndex) {
+          steps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is available. Inserting key ${key}.`)
+          setKeys([...keys, key]);
+          setCurrentSteps(steps)
+          
+          // Update analytics
+          const currentKeys = [...keys, key];
+          setAnalytics({
+            collisions: probes,
+            probes,
+            loadFactor: currentKeys.length / tableSize
+          })
+          
+          setActiveIndex(finalHash)
+          setActiveKey(key)
+          setCurrentOperation('insert')
+          
+          setTimeout(() => {
+            setActiveIndex(null)
+            setActiveKey(null)
+            setCurrentOperation(null)
+            setIsAnimating(false)
+          }, 1000)
+
+          toast.success(`Key '${key}' inserted at index ${finalHash}!`, { 
+            autoClose: 1500
+          })
+          return;
+        } else {
+          steps.push(`Probe ${i + 1}: Index ${currentProbeIndex} is occupied by another key.`)
+        }
+        
+        probes++;
+        if (selectedCollisionResolution.id === 'linear') {
+          finalHash = (originalInitialHash + probes) % tableSize;
+          steps.push(`Linear Probing: Next probe index is (${originalInitialHash} + ${probes}) % ${tableSize} = ${finalHash}`)
+        } else if (selectedCollisionResolution.id === 'quadratic') {
+          finalHash = (originalInitialHash + probes * probes) % tableSize;
+          steps.push(`Quadratic Probing: Next probe index is (${originalInitialHash} + ${probes}²) % ${tableSize} = ${finalHash}`)
+        } else if (selectedCollisionResolution.id === 'double') {
+          const secondaryHashVal = 7 - (originalInitialHash % 7);
+          finalHash = (originalInitialHash + probes * secondaryHashVal) % tableSize;
+          steps.push(`Double Hashing: Next probe index is (${originalInitialHash} + ${probes} * ${secondaryHashVal}) % ${tableSize} = ${finalHash}`)
+        }
+      }
+      
+      steps.push(`Table is full! Cannot insert key ${key} after probing.`)
+      setCurrentSteps(steps)
       setIsAnimating(false)
+      toast.error(`Table is full! Cannot insert key ${key}.`, { autoClose: 2000 });
+      return;
     }
-    setInsertionSteps(currentSteps)
+    
+    steps.push(`Key ${key} successfully inserted at final index ${finalHash}.`)
+    setCurrentSteps(steps)
   }
 
   const handleDelete = (key) => {
     if (isAnimating) return
     setIsAnimating(true)
     const hashFn = getHashFunction()
+    
+    // Initialize steps tracking
+    setCurrentSteps([])
+    setCurrentOperation('delete')
+    let steps = []
+    
+    // Get hash function name for display
+    const hashFnName = selectedHashFunction.name || 'Default Hash Function'
+    
+    steps.push(`Attempting to delete key: ${key}`)
+    steps.push(`Using Hash Function: ${hashFnName}`)
+    
+    if (selectedHashFunction.description) {
+      steps.push(`Formula: ${selectedHashFunction.description}`);
+    }
+    
+    const initialHash = hashFn(key, tableSize);
+    steps.push(`Initial Hash Value: ${initialHash}`)
 
     let deleted = false;
     let deleteIndex = null;
     let probes = 0;
-    const initialHash = hashFn(key, tableSize);
     let currentIndex = initialHash;
     let newKeys = [...keys]; // Declare newKeys at the start of the function
 
     if (selectedCollisionResolution.id === 'chaining') {
+      steps.push(`Using Separate Chaining collision resolution`)
+      steps.push(`Checking bucket at index ${initialHash} for key ${key}`)
+      
+      const bucket = keys.filter(k => hashFn(k, tableSize) === currentIndex);
+      steps.push(`Bucket contains: [${bucket.join(', ')}]`)
+      
       const filteredKeys = keys.filter(k => k !== key);
       if (filteredKeys.length === keys.length) {
+        steps.push(`Key ${key} not found in the hash table`)
+        setCurrentSteps(steps)
         toast.info(`Key '${key}' not found.`, { autoClose: 2000 });
         setIsAnimating(false);
         return;
       }
+      
+      steps.push(`Key ${key} found in bucket. Removing from linked list.`)
       newKeys = filteredKeys; // Assign to the outer newKeys
       setKeys(newKeys);
       deleted = true;
       deleteIndex = initialHash;
     } else { // Probing methods
+      steps.push(`Using ${selectedCollisionResolution.name} collision resolution`)
+      
       for (let i = 0; i < tableSize; i++) {
+        steps.push(`Probe ${i + 1}: Checking index ${currentIndex}`)
+        
         if (keys.some(k => hashFn(k, tableSize) === currentIndex && k === key)) {
           // Found the key at currentIndex, now delete it
+          steps.push(`Key ${key} found at index ${currentIndex}. Deleting...`)
           newKeys = keys.filter(k => !(hashFn(k, tableSize) === currentIndex && k === key)); // Update the outer newKeys
           setKeys(newKeys);
           deleted = true;
           deleteIndex = currentIndex;
           probes = i;
           break;
+        } else {
+          const keyInSlot = keys.find(k => hashFn(k, tableSize) === currentIndex);
+          if (keyInSlot) {
+            steps.push(`Index ${currentIndex} contains different key: ${keyInSlot}`)
+          } else {
+            steps.push(`Index ${currentIndex} is empty`)
+          }
         }
+        
         probes++;
         if (selectedCollisionResolution.id === 'linear') {
-          currentIndex = (initialHash + probes) % tableSize;
+          const nextIndex = (initialHash + probes) % tableSize;
+          steps.push(`Linear Probing: Next probe index is (${initialHash} + ${probes}) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          currentIndex = (initialHash + probes * probes) % tableSize;
+          const nextIndex = (initialHash + probes * probes) % tableSize;
+          steps.push(`Quadratic Probing: Next probe index is (${initialHash} + ${probes}²) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         } else if (selectedCollisionResolution.id === 'double') {
           const secondaryHash = 7 - (initialHash % 7);
-          currentIndex = (initialHash + probes * secondaryHash) % tableSize;
+          const nextIndex = (initialHash + probes * secondaryHash) % tableSize;
+          steps.push(`Double Hashing: Next probe index is (${initialHash} + ${probes} * ${secondaryHash}) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         }
       }
 
       if (!deleted) {
+        steps.push(`Key ${key} not found after probing all possible slots`)
+        setCurrentSteps(steps)
         toast.info(`Key '${key}' not found.`, { autoClose: 2000 });
         setIsAnimating(false);
         return;
       }
     }
+    
+    steps.push(`Key ${key} successfully deleted from index ${deleteIndex}`)
+    setCurrentSteps(steps)
     
     // Update analytics
     let calculatedCollisions = 0;
@@ -335,13 +378,13 @@ export default function Visualizer() {
     // Set active state for animation
     setActiveIndex(deleteIndex);
     setActiveKey(key);
-    setOperation('delete');
+    setCurrentOperation('delete');
     
     // Reset active state after animation
     setTimeout(() => {
       setActiveIndex(null)
       setActiveKey(null)
-      setOperation(null)
+      setCurrentOperation(null)
       setIsAnimating(false)
     }, 1000)
   }
@@ -351,55 +394,101 @@ export default function Visualizer() {
     setIsAnimating(true)
     
     const hashFn = getHashFunction()
+    
+    // Initialize steps tracking
+    setCurrentSteps([])
+    setCurrentOperation('search')
+    let steps = []
+    
+    // Get hash function name for display
+    const hashFnName = selectedHashFunction.name || 'Default Hash Function'
+    
+    steps.push(`Searching for key: ${key}`)
+    steps.push(`Using Hash Function: ${hashFnName}`)
+    
+    if (selectedHashFunction.description) {
+      steps.push(`Formula: ${selectedHashFunction.description}`);
+    }
+    
+    const initialHash = hashFn(key, tableSize);
+    steps.push(`Initial Hash Value: ${initialHash}`)
+    
     let found = false;
     let searchIndex = null;
     let probes = 0;
 
-    const initialHash = hashFn(key, tableSize);
     let currentIndex = initialHash;
 
     if (selectedCollisionResolution.id === 'chaining') {
+      steps.push(`Using Separate Chaining collision resolution`)
+      steps.push(`Checking bucket at index ${initialHash} for key ${key}`)
+      
       const bucket = keys.filter(k => hashFn(k, tableSize) === currentIndex);
+      steps.push(`Bucket contains: [${bucket.join(', ')}]`)
+      
       if (bucket.includes(key)) {
+        steps.push(`Key ${key} found in bucket at index ${currentIndex}`)
         found = true;
         searchIndex = currentIndex;
+      } else {
+        steps.push(`Key ${key} not found in bucket`)
       }
     } else { // Probing methods
+      steps.push(`Using ${selectedCollisionResolution.name} collision resolution`)
+      
       for (let i = 0; i < tableSize; i++) {
+        steps.push(`Probe ${i + 1}: Checking index ${currentIndex}`)
+        
         // Check if the current slot contains the key
         // For probing, we only consider the key that is actually in the slot.
         const keyInSlot = keys.find(k => hashFn(k, tableSize) === currentIndex);
         if (keyInSlot === key) {
+          steps.push(`Key ${key} found at index ${currentIndex}`)
           found = true;
           searchIndex = currentIndex;
           probes = i;
           break;
+        } else if (keyInSlot) {
+          steps.push(`Index ${currentIndex} contains different key: ${keyInSlot}`)
+        } else {
+          steps.push(`Index ${currentIndex} is empty`)
         }
 
         probes++;
         if (selectedCollisionResolution.id === 'linear') {
-          currentIndex = (initialHash + probes) % tableSize;
+          const nextIndex = (initialHash + probes) % tableSize;
+          steps.push(`Linear Probing: Next probe index is (${initialHash} + ${probes}) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         } else if (selectedCollisionResolution.id === 'quadratic') {
-          currentIndex = (initialHash + probes * probes) % tableSize;
+          const nextIndex = (initialHash + probes * probes) % tableSize;
+          steps.push(`Quadratic Probing: Next probe index is (${initialHash} + ${probes}²) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         } else if (selectedCollisionResolution.id === 'double') {
           const secondaryHash = 7 - (initialHash % 7);
-          currentIndex = (initialHash + probes * secondaryHash) % tableSize;
+          const nextIndex = (initialHash + probes * secondaryHash) % tableSize;
+          steps.push(`Double Hashing: Next probe index is (${initialHash} + ${probes} * ${secondaryHash}) % ${tableSize} = ${nextIndex}`)
+          currentIndex = nextIndex;
         }
 
         // If we've probed all possible slots and haven't found the key, stop
         if (probes >= tableSize) {
+          steps.push(`Reached maximum probes (${tableSize}). Stopping search.`)
           break;
         }
       }
     }
 
     if (found) {
+      steps.push(`Search successful: Key ${key} found at index ${searchIndex}`)
       toast.success(`Key '${key}' found at index ${searchIndex}!`, { autoClose: 1500 });
       setActiveIndex(searchIndex);
     } else {
+      steps.push(`Search failed: Key ${key} not found in the hash table`)
       toast.error(`Key '${key}' not found.`, { autoClose: 2000 });
       setActiveIndex(null);
     }
+    
+    setCurrentSteps(steps)
 
     let calculatedCollisions = 0;
     if (selectedCollisionResolution.id === 'chaining') {
@@ -422,13 +511,13 @@ export default function Visualizer() {
     }));
 
     setActiveKey(key)
-    setOperation('search')
+    setCurrentOperation('search')
     
     // Reset active state after animation
     setTimeout(() => {
       setActiveIndex(null)
       setActiveKey(null)
-      setOperation(null)
+      setCurrentOperation(null)
       setIsAnimating(false)
     }, 1000)
   }
@@ -470,24 +559,24 @@ export default function Visualizer() {
             isAnimating={isAnimating}
             activeIndex={activeIndex}
             activeKey={activeKey}
-            operation={operation}
+            operation={currentOperation}
           />
         </div>
       </motion.div>
       
-      {/* Fixed-position Insertion Steps Toggle Bar */}
+      {/* Fixed-position Steps Toggle Bar */}
       <motion.button
-        onClick={() => setShowInsertionSteps(!showInsertionSteps)}
-        className="fixed bottom-4 left-4 py-3 px-6 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-lg z-50 flex items-center justify-center"
+        onClick={() => setShowSteps(!showSteps)}
+        className="fixed bottom-4 left-4 py-3 px-6 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg z-50 flex items-center justify-center"
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
-        {showInsertionSteps ? (
+        {showSteps ? (
           <ChevronLeftIcon className="h-5 w-5 mr-2" />
         ) : (
           <ChevronRightIcon className="h-5 w-5 mr-2" />
         )}
-        {showInsertionSteps ? 'Hide Steps' : 'Show Steps'}
+        {showSteps ? 'Hide Steps' : 'Show Steps'}
       </motion.button>
 
       {/* Fixed-position Analytics Toggle Button */}
@@ -500,23 +589,27 @@ export default function Visualizer() {
         {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
       </motion.button>
 
-      {/* Conditionally Rendered Insertion Steps Panel */}
-      {showInsertionSteps && (
+      {/* Conditionally Rendered Unified Steps Panel */}
+      {showSteps && (
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           className="fixed bottom-20 left-4 w-96 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl z-40"
         >
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Insertion Steps</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            {currentOperation ? `${currentOperation.charAt(0).toUpperCase() + currentOperation.slice(1)} Steps` : 'Operation Steps'}
+          </h2>
           <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-md h-64 overflow-y-auto">
-            {insertionSteps.length > 0 ? (
+            {currentSteps.length > 0 ? (
               <ul className="list-disc list-inside space-y-1 text-gray-800 dark:text-gray-200">
-                {insertionSteps.map((step, index) => (
+                {currentSteps.map((step, index) => (
                   <li key={index}>{step}</li>
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-500 dark:text-gray-400">No insertion steps to display yet. Insert a key to see the process!</p>
+              <p className="text-gray-500 dark:text-gray-400">
+                No steps to display yet. Perform an operation (insert, delete, or search) to see the process!
+              </p>
             )}
           </div>
         </motion.div>

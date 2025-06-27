@@ -112,7 +112,7 @@ export default function HashTable({
     const cellHeight = 60  // Keep original cell height
     const totalWidth = cellWidth * size
     const indexHeight = 20  // Height for index display
-    const keySpacing = 25   // Spacing between keys (increased for better visibility)
+    const keySpacing = 30   // Spacing between keys (increased for better visibility)
 
     // Calculate max chain length for dynamic height
     let maxChainLength = 1; // Minimum height for at least one element
